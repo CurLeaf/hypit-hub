@@ -1,0 +1,92 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import from="@hypit/script@1"/>
+  <import as="text" from="@hypit/text@1"/>
+  <import as="asset" from="@hypit/media@1"/>
+  <import as="gpt" from="@hypit/gpt-image@1"/>
+  <import as="pipeline" from="@hypit/media-pipeline@1"/>
+  <import as="whisperx" from="@hypit/whisperx@1"/>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="sound" from="@hypit/sound@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>
+  <import as="caption-fine" from="@hypit/caption-fine@1"/>
+  <import as="fonts" from="@hypit/fonts-open@1"/>
+  <import as="spatial" from="@hypit/spatial@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="render" from="@hypit/render-hyperframes@1"/>
+  <import as="recipes" source="./recipes.svs"/>
+
+  <script id="story">
+    <main>
+      <NARRATOR>群星云重磅发 || 布星图220 || @scene-2 0动动口视频 || 商品图张口就 || 来不满意 @/scene-2 || @scene-3 意直接喊让它 || 一直改改到满 || 意为止 @/scene-3 || @scene-4 止星图220 || 想说就说创意 || 随你 @/scene-4
+    </main>
+  </script>
+
+  <asset:Audio id="reference-audio" src="./assets/reference-audio.wav"/>
+
+  <text:Value id="scene-1-prompt">Vertical 9:16 product promo frame, cinematic lighting, clean composition. Scene 1 of a Chinese short video ad. Content theme: 群星云重磅发布星图220. 群 星 云 重 磅 发 布 星 图 2 2 0 动 动 口 视. No readable text in image.</text:Value>
+  <gpt:Image id="scene-1" prompt={scene-1-prompt} aspect-ratio="9:16" resolution="1K"/>
+
+  <text:Value id="scene-2-prompt">Vertical 9:16 product promo frame, cinematic lighting, clean composition. Scene 2 of a Chinese short video ad. Content theme: 0动动口视频商品图张口就来不满意. 群 星 云 重 磅 发 布 星 图 2 2 0 动 动 口 视. No readable text in image.</text:Value>
+  <gpt:Image id="scene-2" prompt={scene-2-prompt} aspect-ratio="9:16" resolution="1K"/>
+
+  <text:Value id="scene-3-prompt">Vertical 9:16 product promo frame, cinematic lighting, clean composition. Scene 3 of a Chinese short video ad. Content theme: 意直接喊让它一直改改到满意为止. 群 星 云 重 磅 发 布 星 图 2 2 0 动 动 口 视. No readable text in image.</text:Value>
+  <gpt:Image id="scene-3" prompt={scene-3-prompt} aspect-ratio="9:16" resolution="1K"/>
+
+  <text:Value id="scene-4-prompt">Vertical 9:16 product promo frame, cinematic lighting, clean composition. Scene 4 of a Chinese short video ad. Content theme: 止星图220想说就说创意随你. 群 星 云 重 磅 发 布 星 图 2 2 0 动 动 口 视. No readable text in image.</text:Value>
+  <gpt:Image id="scene-4" prompt={scene-4-prompt} aspect-ratio="9:16" resolution="1K"/>
+
+  <time:Clock id="clock" frame-rate="30"/>
+  <spatial:Canvas id="vertical" width="768" height="1344"/>
+  <spatial:Frame id="speech-frame" within={vertical} left="0%" top="0%" right="100%" bottom="100%"/>
+  <spatial:Frame id="broll-frame" within={vertical} left="8%" top="12%" right="92%" bottom="55%"/>
+  <spatial:Extent id="scene-extent" width="768" height="1344"/>
+
+  <pipeline:Normalize id="speech-media" source={reference-audio}
+    video="none" audio="default" span-authority="audio" clock={clock}/>
+  <whisperx:SemanticTake id="speech-semantic" narrative={story}
+    segment={story.segment.main} media={speech-media.media} language="zh"/>
+
+  <time:Timeline id="speech" clock={clock}>
+    <time:Take source={speech-semantic.take}/>
+  </time:Timeline>
+
+  <sound:Style id="speech-sound-style"/>
+  <sound:Track id="speech-sound" timeline={speech.timeline}>
+    <sound:Use style={speech-sound-style}/>
+  </sound:Track>
+
+  <media-track:Track id="visual" timeline={speech.timeline} canvas={vertical}>
+    <media-track:Item id="hero" image={scene-1.image}
+      extent={scene-extent} during={story.segment.main}
+      frame={speech-frame} appearance={recipes.media.hero}/>
+
+    <media-track:Item id="scene-2-card" image={scene-2.image}
+      extent={scene-extent} during={story.selection.scene-2}
+      frame={broll-frame} appearance={recipes.media.broll}
+      motion={recipes.motion.broll}/>
+
+    <media-track:Item id="scene-3-card" image={scene-3.image}
+      extent={scene-extent} during={story.selection.scene-3}
+      frame={broll-frame} appearance={recipes.media.broll}
+      motion={recipes.motion.broll}/>
+
+    <media-track:Item id="scene-4-card" image={scene-4.image}
+      extent={scene-extent} during={story.selection.scene-4}
+      frame={broll-frame} appearance={recipes.media.broll}
+      motion={recipes.motion.broll}/>
+  </media-track:Track>
+
+  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
+  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
+  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
+    <caption-fine:Use style={caption-style}/>
+  </caption-fine:Track>
+
+  <film:Film id="main" canvas={vertical} timeline={speech.timeline} appearance={recipes.film.vertical}>
+    <film:Track source={visual.visual}/>
+    <film:Track source={speech-sound.audio}/>
+    <film:Track source={captions.track}/>
+  </film:Film>
+  <render:Video id="final" composition={main.composition} timeline={speech.timeline}/>
+</svml>

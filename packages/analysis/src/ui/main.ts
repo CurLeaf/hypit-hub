@@ -26,6 +26,9 @@ let referenceUploading = false;
 let referenceUploadError: string | undefined;
 let officialPathChecks: readonly OfficialPathCheckView[] | undefined;
 let officialPathReady: boolean | undefined;
+let readinessRefreshToken = 0;
+let lastReadinessKey = "";
+const adaptedScriptCache = new Map<string, string | undefined>();
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -170,8 +173,26 @@ function isSessionBusy(value: AnalysisSessionView): boolean {
     || value.adaptation?.status === "running";
 }
 
+function readinessKey(value: AnalysisSessionView, forBuild: boolean): string {
+  return JSON.stringify({
+    forBuild,
+    analysisPath: value.analysisPath,
+    productReferencePath: value.productReferencePath,
+    adaptation: value.adaptation,
+    scaffold: value.scaffold,
+    videoAroll: value.videoAroll,
+  });
+}
+
+function invalidateOfficialPathChecks(): void {
+  officialPathChecks = undefined;
+  officialPathReady = undefined;
+  lastReadinessKey = "";
+}
+
 function applySessionUpdate(next: AnalysisSessionView): boolean {
   const before = sessionFingerprint(session);
+  const prevReadinessKey = readinessKey(session, Boolean(session.scaffold));
   const prevTab = activeTab;
   const prevNotice = completionNotice;
   const wasAnalyzing = session.job?.status === "running";
@@ -218,10 +239,11 @@ function applySessionUpdate(next: AnalysisSessionView): boolean {
     previewMode = "output";
   }
   session = next;
-  officialPathChecks = undefined;
-  officialPathReady = undefined;
-  if (activeTab === "create" || next.productReferencePath !== undefined) {
-    void refreshOfficialPathChecks(Boolean(next.scaffold));
+  const forBuild = Boolean(next.scaffold);
+  const nextReadinessKey = readinessKey(session, forBuild);
+  if ((activeTab === "create" || next.productReferencePath !== undefined) && nextReadinessKey !== prevReadinessKey) {
+    invalidateOfficialPathChecks();
+    void refreshOfficialPathChecks(forBuild);
   }
   return sessionFingerprint(session) !== before || activeTab !== prevTab || completionNotice !== prevNotice;
 }
@@ -510,14 +532,18 @@ async function loadMarkdown(path: string | undefined): Promise<string | undefine
 
 async function loadAdaptedScript(path: string | undefined): Promise<string | undefined> {
   if (path === undefined) return undefined;
+  if (adaptedScriptCache.has(path)) return adaptedScriptCache.get(path);
   try {
     const payload = await api<{ markdown: string }>("/__analysis/document?path=" + encodeURIComponent(path));
     const scenes = JSON.parse(payload.markdown) as readonly { readonly id?: string; readonly text?: string }[];
     const lines = scenes
       .map((scene) => scene.text?.trim())
       .filter((text): text is string => text !== undefined && text.length > 0);
-    return lines.length > 0 ? lines.join("\n\n") : undefined;
+    const script = lines.length > 0 ? lines.join("\n\n") : undefined;
+    adaptedScriptCache.set(path, script);
+    return script;
   } catch {
+    adaptedScriptCache.set(path, undefined);
     return undefined;
   }
 }
@@ -800,16 +826,29 @@ function renderAdaptationField(): HTMLElement {
       if (audioPreview !== undefined) adaptField.append(audioPreview);
       const scriptCard = el("div", "adapted-script");
       scriptCard.append(el("strong", undefined, "改编口播"));
-      scriptCard.append(el("p", "adapted-script-loading", "加载口播文案…"));
-      adaptField.append(scriptCard);
-      void loadAdaptedScript(adapt.adaptedScenesPath).then((script) => {
-        scriptCard.replaceChildren(el("strong", undefined, "改编口播"));
+      const scenesPath = adapt.adaptedScenesPath;
+      if (scenesPath === undefined) {
+        scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
+      } else if (adaptedScriptCache.has(scenesPath)) {
+        const script = adaptedScriptCache.get(scenesPath);
         if (script === undefined) {
           scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
         } else {
           scriptCard.append(el("pre", "doc-preview adapted-script-text", script));
         }
-      });
+      } else {
+        scriptCard.append(el("p", "adapted-script-loading", "加载口播文案…"));
+        void loadAdaptedScript(scenesPath).then((script) => {
+          if (!scriptCard.isConnected) return;
+          scriptCard.replaceChildren(el("strong", undefined, "改编口播"));
+          if (script === undefined) {
+            scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
+          } else {
+            scriptCard.append(el("pre", "doc-preview adapted-script-text", script));
+          }
+        });
+      }
+      adaptField.append(scriptCard);
       const actions = el("div", "result-actions");
       const preview = el("button", "btn", "新窗口试听");
       preview.addEventListener("click", () => {
@@ -841,7 +880,7 @@ function renderOfficialPathChecklist(): HTMLElement {
   card.append(el("h4", undefined, "官方复刻路径检查"));
   if (officialPathChecks === undefined) {
     card.append(el("p", undefined, "加载检查项…"));
-    void refreshOfficialPathChecks();
+    void refreshOfficialPathChecks(Boolean(session.scaffold));
     return card;
   }
   const list = document.createElement("ul");
@@ -872,16 +911,23 @@ function renderOfficialPathChecklist(): HTMLElement {
 }
 
 async function refreshOfficialPathChecks(forBuild = false): Promise<void> {
+  const key = readinessKey(session, forBuild);
+  if (key === lastReadinessKey && officialPathChecks !== undefined && officialPathReady !== undefined) return;
+  const token = ++readinessRefreshToken;
   try {
     const readiness = await api<{ ok: boolean; checks: OfficialPathCheckView[] }>(
       `/__analysis/readiness${forBuild ? "?forBuild=1" : ""}`,
     );
+    if (token !== readinessRefreshToken) return;
+    const before = JSON.stringify({ checks: officialPathChecks, ready: officialPathReady });
     officialPathChecks = readiness.checks;
     officialPathReady = readiness.ok;
-    if (activeTab === "create") render();
+    lastReadinessKey = key;
+    const after = JSON.stringify({ checks: officialPathChecks, ready: officialPathReady });
+    if (activeTab === "create" && before !== after) render();
   } catch {
-    officialPathChecks = undefined;
-    officialPathReady = undefined;
+    if (token !== readinessRefreshToken) return;
+    invalidateOfficialPathChecks();
   }
 }
 
@@ -1117,6 +1163,8 @@ async function persistAdaptationGoal(goal: string): Promise<void> {
 }
 
 async function prepareAdaptation(): Promise<void> {
+  adaptedScriptCache.clear();
+  invalidateOfficialPathChecks();
   try {
     session = await api<AnalysisSessionView>("/__analysis/prepare-adaptation", {
       method: "POST",

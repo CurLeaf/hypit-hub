@@ -1,0 +1,69 @@
+<?svml using="@hypit/svs@1"?>
+<sheet version="1">
+  film.vertical { background: #0b0c10; }
+
+  media.hero {
+    stack-order: 5;
+    fit: cover;
+    frame-x: 0.5;
+    frame-y: 0.5;
+    content-x: 0.5;
+    content-y: 0.5;
+  }
+
+  media.broll {
+    stack-order: 20;
+    fit: cover;
+    shadows: 0 16 32 -8 #000000CC;
+  }
+
+  motion.broll {
+    enter: pop;
+    enter-frames: 6;
+    enter-easing: ease-out;
+    exit: fade;
+    exit-frames: 4;
+    exit-easing: ease-in;
+  }
+
+  caption.primary {
+    stack-order: 70;
+    x: 0.5;
+    y: 0.78;
+    width: 0.9;
+    height: 0.16;
+    anchor-x: center;
+    anchor-y: center;
+    align: center;
+    block-align: center;
+    inline-size: hug;
+    wrap: word;
+    max-lines: 2;
+    max-words-per-line: 6;
+    line-height: 1.3;
+    size: 42;
+    letter-spacing: 0;
+    fill: #FFFFFF;
+    stroke-color: #090A0F;
+    stroke-width: 2;
+    shadow-color: #000000;
+    shadow-opacity: 0.7;
+    shadow-x: 0;
+    shadow-y: 2;
+    shadow-blur: 6;
+    karaoke: current;
+    karaoke-transition: step;
+    active-fill: #FFFFFF;
+    active-box: current;
+    active-box-background: #E3406A;
+    active-box-padding: 4 8;
+    active-box-radius: 6;
+    active-response: pop;
+    active-scale: 1.05;
+    handoff: cut;
+    cue-enter: fade;
+    cue-enter-frames: 2;
+    cue-exit: fade;
+    cue-exit-frames: 2;
+  }
+</sheet>
