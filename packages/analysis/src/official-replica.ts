@@ -1,0 +1,215 @@
+import { readFile } from "node:fs/promises";
+
+import type { ChatGatewayConfig } from "./llm.js";
+import { loadChatGateway } from "./llm.js";
+import type { RuntimeCapabilities } from "./runtime-capabilities.js";
+import type { AnalysisSessionView } from "./shared.js";
+
+export type OfficialPathCheck = {
+  readonly id: string;
+  readonly label: string;
+  readonly ok: boolean;
+  readonly detail: string;
+};
+
+export type OfficialPathReport = {
+  readonly ok: boolean;
+  readonly checks: readonly OfficialPathCheck[];
+};
+
+const DEFAULT_SCENE_PROMPT_MARK = "Chinese product promo scene";
+
+export function isDefaultScenePrompt(prompt: string): boolean {
+  return prompt.includes(DEFAULT_SCENE_PROMPT_MARK)
+    || prompt.startsWith("Vertical 9:16 short-form social video frame, cinematic lighting, clean composition.");
+}
+
+export async function loadOfficialGateway(
+  runtimePath: string | undefined,
+  workspaceRoot: string,
+): Promise<ChatGatewayConfig | undefined> {
+  return loadChatGateway(runtimePath, workspaceRoot);
+}
+
+export function assertOfficialLlmGateway(gateway: ChatGatewayConfig | undefined): ChatGatewayConfig {
+  if (gateway === undefined) {
+    throw new Error("缺少 Runtime 网关（gateway.default）。请运行 hypit runtime use 并配置 hypit.runtime.json。");
+  }
+  const secret = process.env[gateway.apiKeyEnv]?.trim();
+  if (secret === undefined || secret.length === 0) {
+    throw new Error(`官方复刻需要对话模型：请配置 ${gateway.apiKeyEnv}（用于 Insight / Brief / Treatment / 口播改写 / 场景 prompt）`);
+  }
+  return gateway;
+}
+
+export function assertOfficialH3Credential(
+  capabilities: RuntimeCapabilities,
+  videoAroll: boolean,
+): void {
+  if (!videoAroll || !capabilities.h3Video) return;
+  const secret = process.env.H3_VIDEO_API_KEY?.trim();
+  if (secret === undefined || secret.length === 0) {
+    throw new Error("已启用 MiniMax H3 口播，但缺少 H3_VIDEO_API_KEY。请在 .env 配置后重启 analysis。");
+  }
+}
+
+export function validateOfficialSvml(
+  svml: string,
+  options: { readonly videoAroll: boolean; readonly requireProductReference: boolean },
+): OfficialPathReport {
+  const checks: OfficialPathCheck[] = [
+    {
+      id: "product-reference",
+      label: "参考图写入工程",
+      ok: svml.includes('id="product-reference"') || svml.includes("product-reference.image"),
+      detail: "应含 assets/product-reference 与 gpt/H3 Reference 绑定",
+    },
+    {
+      id: "tts-audio",
+      label: "TTS 改编配音",
+      ok: svml.includes("generated-speech") || !options.requireProductReference,
+      detail: "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
+    },
+    {
+      id: "h3-aroll",
+      label: "H3 A-roll 口播",
+      ok: !options.videoAroll || svml.includes("h3:ReferenceVideo"),
+      detail: "启用 H3 口播时应含 h3:ReferenceVideo + speaker-v1 prompt",
+    },
+    {
+      id: "speaker-template",
+      label: "speaker-v1 模板",
+      ok: !options.videoAroll || svml.includes("speaker-kit.speaker-v1"),
+      detail: "H3 prompt 由官方 speaker-v1 模板渲染",
+    },
+    {
+      id: "gpt-reference",
+      label: "B-roll 参考图 edits",
+      ok: svml.includes("<gpt:Reference image={product-reference.image}/>"),
+      detail: "分镜图应通过 gpt:Reference 传入产品参考图",
+    },
+    {
+      id: "no-reference-audio",
+      label: "未使用参考片原声",
+      ok: !svml.includes('id="reference-audio"'),
+      detail: "官方路径不应以 reference-audio 作为口播轨",
+    },
+  ];
+  const relevant = options.requireProductReference
+    ? checks
+    : checks.filter((check) => check.id === "product-reference");
+  const ok = relevant.every((check) => check.ok);
+  return { ok, checks: relevant };
+}
+
+export async function buildOfficialPathReport(input: {
+  readonly session: AnalysisSessionView;
+  readonly runtimePath?: string;
+  readonly forBuild?: boolean;
+  readonly svmlPath?: string;
+}): Promise<OfficialPathReport> {
+  const checks: OfficialPathCheck[] = [];
+  const videoAroll = input.session.videoAroll ?? true;
+  const gateway = await loadOfficialGateway(input.runtimePath, input.session.workspaceRoot);
+  const llmOk = gateway !== undefined && (process.env[gateway.apiKeyEnv]?.trim().length ?? 0) > 0;
+  checks.push({
+    id: "llm",
+    label: "对话模型 (Insight/Brief/Treatment/改写/prompt)",
+    ok: llmOk,
+    detail: llmOk
+      ? `已配置 ${gateway!.apiKeyEnv} → ${gateway!.model}`
+      : "请配置 OPENAI_API_KEY 与 HYPIT_CHAT_MODEL（或 runtime gateway.default.chatModel）",
+  });
+
+  const ttsOk = llmOk;
+  checks.push({
+    id: "tts",
+    label: "TTS 改编配音",
+    ok: ttsOk,
+    detail: ttsOk
+      ? `将使用 ${gateway!.ttsModel} / ${gateway!.ttsVoice}`
+      : "TTS 与对话模型共用 gateway.default 密钥",
+  });
+
+  const h3Ok = !videoAroll || (process.env.H3_VIDEO_API_KEY?.trim().length ?? 0) > 0;
+  checks.push({
+    id: "h3",
+    label: "MiniMax H3 口播",
+    ok: h3Ok,
+    detail: videoAroll
+      ? (h3Ok ? "已配置 H3_VIDEO_API_KEY" : "启用 H3 口播需要 H3_VIDEO_API_KEY")
+      : "未启用 H3（仅静态分镜 + TTS）",
+  });
+
+  checks.push({
+    id: "analysis",
+    label: "参考片分析完成",
+    ok: input.session.analysisPath !== undefined,
+    detail: input.session.analysisPath === undefined ? "请先点击「开始分析」" : "已完成",
+  });
+
+  const hasReference = input.session.productReferencePath !== undefined;
+  checks.push({
+    id: "reference-image",
+    label: "参考图已上传",
+    ok: hasReference,
+    detail: hasReference
+      ? (input.session.productReferenceName ?? "已上传")
+      : "请在「生成」页上传产品/人物参考图",
+  });
+
+  const adapt = input.session.adaptation;
+  const adaptOk = hasReference
+    && adapt?.status === "complete"
+    && adapt.generatedSpeechPath !== undefined
+    && adapt.productReferenceSource === input.session.productReferencePath;
+  checks.push({
+    id: "adaptation",
+    label: "改编配音已就绪",
+    ok: adaptOk,
+    detail: adapt?.status === "running"
+      ? (adapt.phase ?? "制作中…")
+      : adapt?.status === "error"
+        ? (adapt.error ?? "制作失败")
+        : adaptOk
+          ? "TTS 口播与 H3 音色样本已生成"
+          : "上传参考图并完成分析后自动制作，或点击「开始制作配音」",
+  });
+
+  if (input.forBuild === true) {
+    checks.push({
+      id: "scaffold",
+      label: "复刻工程已生成",
+      ok: input.session.scaffold?.runPath !== undefined,
+      detail: input.session.scaffold?.runPath ?? "请先点击「一键复刻」",
+    });
+  }
+
+  if (input.svmlPath !== undefined) {
+    try {
+      const svml = await readFile(input.svmlPath, "utf8");
+      const validation = validateOfficialSvml(svml, { videoAroll, requireProductReference: hasReference });
+      checks.push(...validation.checks);
+    } catch (error) {
+      checks.push({
+        id: "svml",
+        label: "工程 SVML 校验",
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { ok: checks.every((check) => check.ok), checks };
+}
+
+export function formatOfficialPathReport(report: OfficialPathReport): string {
+  return [
+    "# 官方复刻路径检查",
+    "",
+    report.ok ? "状态：**已通过**" : "状态：**未通过**（请补齐下列项后再一键复刻）",
+    "",
+    ...report.checks.map((check) => `- [${check.ok ? "x" : " "}] **${check.label}** — ${check.detail}`),
+    "",
+  ].join("\n");
+}

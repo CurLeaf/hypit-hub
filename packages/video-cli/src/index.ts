@@ -20,13 +20,32 @@ export {
 export { videoCliDistribution } from "./distribution.js";
 export { videoStudioCompanionPackages } from "./studio-distribution.js";
 export { discoverVideoSourcePackages } from "./package-selection.js";
-export { creationCommands, isCreationCommand, runCreationCli, writeCreationHelp } from "./creation.js";
+export {
+  creationCommands,
+  creationEnvironment,
+  extractSpeechEvidenceBytes,
+  isCreationCommand,
+  runCreationCli,
+  writeCreationHelp,
+} from "./creation.js";
 export type { CreationCommand, CreationEnvironment, CreationHost } from "./creation.js";
-export { isMediaCommand, mediaCommands, runMediaCli, writeMediaHelp } from "./media.js";
-export type { MediaCommand, MediaProbe } from "./media.js";
+export {
+  isMediaCommand,
+  mediaCommands,
+  probeMedia,
+  runMediaCli,
+  tileFrames,
+  tileSampleTimes,
+  visualBoundaries,
+  writeMediaHelp,
+} from "./media.js";
+export type { MediaCommand, MediaProbe, VisualBoundary } from "./media.js";
+export { readTranscript } from "./transcript.js";
+export type { TranscriptWord, FrameWords } from "./transcript.js";
 export { runCaptureCli, writeCaptureHelp } from "./capture.js";
 export { listPackages, listSurfaces, runVocabularyCli, visualSchema, writeVocabularyHelp } from "./vocabulary.js";
 export type { PackageListing, SurfaceListing } from "./vocabulary.js";
+export { runProcess, runProcessOutput, runProcessWithInput } from "./process.js";
 /** The project's selected Runtime Profile, read the way `hypit` reads it, for tools that run beside the CLI. */
 export { findRuntimeProfile } from "@hypit/project-context-node";
 

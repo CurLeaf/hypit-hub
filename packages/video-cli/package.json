@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli.ts",
+    "./src/process.js": "./src/process.ts"
   },
   "dependencies": {
     "@hypit/browser-capture": "workspace:*",

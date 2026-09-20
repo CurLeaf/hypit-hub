@@ -1,0 +1,9 @@
+{
+  "name": "hypit-byok-openai-compatible",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@hypit/provider-openai-compatible": "workspace:*"
+  }
+}

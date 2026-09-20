@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sealAlignedTranscriptEvidence, speechEvidenceTypes } from "@hypit/speech-evidence";
@@ -26,6 +27,7 @@ export const localWhisperXDefaults = {
   expectedBatchSize: 8,
   expectedServiceVersion: "0.1.0",
   expectedWhisperXVersion: "3.8.6",
+  requestTimeoutMs: 20 * 60_000,
 } as const;
 export type CreateLocalWhisperXProviderOptions = {
   readonly instance?: string;
@@ -56,48 +58,92 @@ function positiveInteger(value: number, subject: string): number {
 
 export const interpretWhisperXResponse = interpretWhisperXTranscript;
 
-async function limitedJson(response: Response, maxBytes: number, subject: string): Promise<{
-  readonly value: unknown;
-}> {
-  const reader = response.body?.getReader();
-  let bytes: Uint8Array;
-  if (reader === undefined) {
-    bytes = new Uint8Array(await response.arrayBuffer());
-    assert(bytes.byteLength <= maxBytes, `${subject} exceeded the configured response limit`);
-  } else {
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    try {
-      while (true) {
-        const item = await reader.read();
-        if (item.done) break;
-        size += item.value.byteLength;
-        if (size > maxBytes) {
-          await reader.cancel();
-          throw new Error(`${subject} exceeded the configured response limit`);
-        }
-        chunks.push(item.value);
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-  }
-  assert(response.ok, `${subject} failed with HTTP ${response.status}: ${Buffer.from(bytes).toString("utf8").slice(0, 500)}`);
-  try {
-    return { value: JSON.parse(Buffer.from(bytes).toString("utf8")) };
-  } catch {
-    throw new Error(`${subject} returned invalid JSON`);
-  }
-}
-
 function result(value: CanonicalValue): EndpointFulfillment {
   return { value: { kind: "inline", value } };
+}
+
+type HttpJsonResponse = {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly value: unknown;
+};
+
+/** Loopback HTTP without fetch's fixed headers timeout; CPU transcription can exceed five minutes. */
+async function httpJson(
+  urlString: string,
+  options: {
+    readonly method?: string;
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly body?: string;
+    readonly signal?: AbortSignal;
+    readonly timeoutMs: number;
+    readonly maxBytes: number;
+    readonly subject: string;
+  },
+): Promise<HttpJsonResponse> {
+  const url = new URL(urlString);
+  assert(url.protocol === "http:" && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname),
+    "local WhisperX HTTP client requires a loopback URL");
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error, response?: HttpJsonResponse): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error === undefined) resolve(response!);
+      else reject(error);
+    };
+    const onAbort = (): void => {
+      req.destroy(options.signal?.reason instanceof Error ? options.signal.reason : new Error("WhisperX request aborted"));
+    };
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    const headers = { ...options.headers };
+    if (options.body !== undefined) headers["content-length"] = String(Buffer.byteLength(options.body));
+    const req = httpRequest({
+      hostname: url.hostname,
+      port: url.port.length > 0 ? Number(url.port) : 80,
+      path: `${url.pathname}${url.search}`,
+      method: options.method ?? "GET",
+      headers,
+    }, (res) => {
+      res.on("error", (error) => finish(error instanceof Error ? error : new Error(String(error))));
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on("data", (chunk: Buffer) => {
+        size += chunk.byteLength;
+        if (size > options.maxBytes) {
+          req.destroy(new Error(`${options.subject} exceeded the configured response limit`));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on("end", () => {
+        options.signal?.removeEventListener("abort", onAbort);
+        const bytes = Buffer.concat(chunks);
+        const status = res.statusCode ?? 500;
+        const ok = status >= 200 && status < 300;
+        if (!ok) {
+          finish(new Error(`${options.subject} failed with HTTP ${status}: ${bytes.toString("utf8").slice(0, 500)}`));
+          return;
+        }
+        try {
+          finish(undefined, { ok, status, value: JSON.parse(bytes.toString("utf8")) });
+        } catch {
+          finish(new Error(`${options.subject} returned invalid JSON`));
+        }
+      });
+    });
+    const timer = setTimeout(() => {
+      req.destroy(new Error(`${options.subject} timed out after ${options.timeoutMs} ms`));
+    }, options.timeoutMs);
+    req.on("error", (error) => finish(error));
+    if (options.body !== undefined) req.write(options.body);
+    req.end();
+  });
 }
 
 export function createLocalWhisperXProvider(config: CreateLocalWhisperXProviderOptions) {
@@ -116,7 +162,7 @@ export function createLocalWhisperXProvider(config: CreateLocalWhisperXProviderO
   assert(expectedCompute.trim().length > 0, "expectedCompute is empty");
   assert(expectedServiceVersion.trim().length > 0, "expectedServiceVersion is empty");
   assert(expectedWhisperXVersion.trim().length > 0, "expectedWhisperXVersion is empty");
-  const requestTimeoutMs = positiveInteger(config.requestTimeoutMs ?? 10 * 60_000, "requestTimeoutMs");
+  const requestTimeoutMs = positiveInteger(config.requestTimeoutMs ?? localWhisperXDefaults.requestTimeoutMs, "requestTimeoutMs");
   const maxResponseBytes = positiveInteger(config.maxResponseBytes ?? 64 * 1024 * 1024, "maxResponseBytes");
 
   return defineEndpointPackage({
@@ -142,8 +188,12 @@ export function createLocalWhisperXProvider(config: CreateLocalWhisperXProviderO
           await writeFile(audioPath, audio);
           const signal = AbortSignal.timeout(requestTimeoutMs);
           await context.reportProgress?.({ phase: "Checking local transcription service" });
-          const healthResponse = await fetch(`${normalizedBaseUrl}/health`, { signal });
-          const health = await limitedJson(healthResponse, Math.min(maxResponseBytes, 64 * 1024), "WhisperX health");
+          const health = await httpJson(`${normalizedBaseUrl}/health`, {
+            signal,
+            timeoutMs: Math.min(requestTimeoutMs, 60_000),
+            maxBytes: Math.min(maxResponseBytes, 64 * 1024),
+            subject: "WhisperX health",
+          });
           assert(health.value !== null && typeof health.value === "object" && !Array.isArray(health.value),
             "WhisperX health response is invalid");
           const healthValue = health.value as {
@@ -166,7 +216,7 @@ export function createLocalWhisperXProvider(config: CreateLocalWhisperXProviderO
             && healthValue.batchSize === expectedBatchSize,
           "WhisperX service runtime identity differs from the configured Provider");
           await context.reportProgress?.({ phase: "Transcribing and aligning words" });
-          const transcriptionResponse = await fetch(`${normalizedBaseUrl}/transcribe`, {
+          const raw = await httpJson(`${normalizedBaseUrl}/transcribe`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -174,8 +224,10 @@ export function createLocalWhisperXProvider(config: CreateLocalWhisperXProviderO
               language: request.language,
             }),
             signal,
+            timeoutMs: requestTimeoutMs,
+            maxBytes: maxResponseBytes,
+            subject: "WhisperX transcription",
           });
-          const raw = await limitedJson(transcriptionResponse, maxResponseBytes, "WhisperX transcription");
           assert(raw.value !== null && typeof raw.value === "object" && !Array.isArray(raw.value),
             "WhisperX transcription response is invalid");
           const response = raw.value as WhisperXServiceResponse;

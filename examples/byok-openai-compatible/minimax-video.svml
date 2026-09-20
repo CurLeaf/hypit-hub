@@ -1,0 +1,33 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="spatial" from="@hypit/spatial@1"/>
+  <import as="text" from="@hypit/text@1"/>
+  <import as="h3" from="@hypit/minimax-h3@1"/>
+  <import as="pipeline" from="@hypit/media-pipeline@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="render" from="@hypit/render-hyperframes@1"/>
+  <import as="style" source="./minimal.svs"/>
+
+  <time:Clock id="clock" frame-rate="30"/>
+  <time:Timeline id="program" clock={clock} end="6s"/>
+  <spatial:Canvas id="canvas" width="1080" height="1920"/>
+  <spatial:Frame id="full-frame" within={canvas} left="0%" top="0%" right="100%" bottom="100%"/>
+
+  <text:Value id="prompt">A serene mountain landscape at sunset, gentle camera drift, cinematic vertical video.</text:Value>
+  <h3:TextVideo id="hero" prompt={prompt} duration="6" resolution="768P" aspect-ratio="9:16"/>
+
+  <pipeline:Normalize id="hero-media" source={hero.video} clock={clock}
+    video="primary-moving" audio="none" span-authority="video"/>
+
+  <media-track:Track id="visual" timeline={program.timeline} canvas={canvas}>
+    <media-track:Item id="hero-clip" media={hero-media.media}
+      during="program" frame={full-frame} appearance={style.media.hero}/>
+  </media-track:Track>
+
+  <film:Film id="main" canvas={canvas} timeline={program.timeline} appearance={style.film.main}>
+    <film:Track source={visual.visual}/>
+  </film:Film>
+  <render:Video id="final" composition={main.composition} timeline={program.timeline}/>
+</svml>

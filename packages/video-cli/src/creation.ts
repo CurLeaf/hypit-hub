@@ -222,7 +222,7 @@ function canonicalEvidence(shape: WavShape | undefined): shape is WavShape {
 }
 
 /** The 16 kHz mono PCM WAV WhisperX measures; extracted with ffmpeg unless the file already is one. */
-async function speechEvidenceBytes(path: string): Promise<{ readonly bytes: Uint8Array; readonly sampleFrames: number; readonly extracted: boolean }> {
+export async function extractSpeechEvidenceBytes(path: string): Promise<{ readonly bytes: Uint8Array; readonly sampleFrames: number; readonly extracted: boolean }> {
   const original = new Uint8Array(await readFile(path));
   const shape = wavShape(original);
   if (canonicalEvidence(shape)) return { bytes: original, sampleFrames: shape.dataBytes / 2, extracted: false };
@@ -285,7 +285,7 @@ async function transcribe(argv: readonly string[], io: CliIo, environment: Creat
     parsed.options.get("--runtime"),
     parsed.options.get("--workspace"),
   );
-  const evidence = await speechEvidenceBytes(source);
+  const evidence = await extractSpeechEvidenceBytes(source);
   const resources = new MemoryResourceStore();
   const artifact = await resources.put(evidence.bytes, "audio/wav");
   const audio = sealSpeechEvidenceAudio({ artifact, sampleFrames: evidence.sampleFrames });

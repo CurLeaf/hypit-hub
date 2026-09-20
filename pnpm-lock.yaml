@@ -189,6 +189,9 @@ importers:
       '@hypit/provider-media-local':
         specifier: workspace:*
         version: link:packages/provider-media-local
+      '@hypit/provider-openai-compatible':
+        specifier: workspace:*
+        version: link:packages/provider-openai-compatible
       '@hypit/provider-whisperx-local':
         specifier: workspace:*
         version: link:packages/provider-whisperx-local
@@ -405,6 +408,42 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+
+  packages/analysis:
+    dependencies:
+      '@hypit/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@hypit/driver-node':
+        specifier: workspace:*
+        version: link:../driver-node
+      '@hypit/estimate':
+        specifier: workspace:*
+        version: link:../estimate
+      '@hypit/project-context-node':
+        specifier: workspace:*
+        version: link:../project-context-node
+      '@hypit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@hypit/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@hypit/speech':
+        specifier: workspace:*
+        version: link:../speech
+      '@hypit/speech-evidence':
+        specifier: workspace:*
+        version: link:../speech-evidence
+      '@hypit/video-cli':
+        specifier: workspace:*
+        version: link:../video-cli
+      '@hypit/whisperx':
+        specifier: workspace:*
+        version: link:../whisperx
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@24.10.1)(esbuild@0.27.7)(tsx@4.21.0)
 
   packages/artifact:
     dependencies:
@@ -2317,6 +2356,34 @@ importers:
       '@hypit/driver-node':
         specifier: workspace:*
         version: link:../driver-node
+
+  packages/provider-openai-compatible:
+    dependencies:
+      '@hypit/endpoint-kit':
+        specifier: workspace:*
+        version: link:../endpoint-kit
+      '@hypit/generation':
+        specifier: workspace:*
+        version: link:../generation
+      '@hypit/package-loader-node':
+        specifier: workspace:*
+        version: link:../package-loader-node
+      '@hypit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@hypit/runtime-kit':
+        specifier: workspace:*
+        version: link:../runtime-kit
+      '@hypit/seedance':
+        specifier: workspace:*
+        version: link:../seedance
+    devDependencies:
+      '@hypit/driver-node':
+        specifier: workspace:*
+        version: link:../driver-node
+      '@hypit/gpt-image':
+        specifier: workspace:*
+        version: link:../gpt-image
 
   packages/provider-whisperx-local:
     dependencies:

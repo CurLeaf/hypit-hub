@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import test from "node:test";
 import { sealSpeechEvidenceAudio, speechTypes } from "@hypit/speech";
 import assert from "node:assert/strict";
@@ -74,11 +75,13 @@ test("wire seconds are lowered once to exact evidence samples without authored S
 test("local Provider stages canonical evidence bytes unchanged and returns sealed alignment evidence", async () => {
   const expected = wav(32_000);
   let stagedMatches = false;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input, init) => {
-    const url = String(input);
-    if (url.endsWith("/health")) {
-      return new Response(JSON.stringify({
+  let server: Server | undefined;
+  await new Promise<void>((resolveReady, rejectReady) => {
+    server = createServer(async (request, response) => {
+      const url = request.url ?? "/";
+      if (url === "/health") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
           ok: true,
           protocol: "hypit.whisperx-service@1",
           serviceVersion: "0.1.0",
@@ -87,21 +90,32 @@ test("local Provider stages canonical evidence bytes unchanged and returns seale
           device: "cpu",
           compute: "int8",
           batchSize: 8,
-      }), { headers: { "content-type": "application/json" } });
-    }
-    assert.ok(url.endsWith("/transcribe"));
-    const requestBody = init?.body;
-    if (typeof requestBody !== "string") throw new Error("WhisperX request body is not JSON text");
-    const body = JSON.parse(requestBody) as { readonly audio_path: string };
-    stagedMatches = Buffer.compare(Buffer.from(await readFile(body.audio_path)), Buffer.from(expected)) === 0;
-    return new Response(JSON.stringify({
-      language: "en",
-      segments: [{ start: 0, end: 2, words: [
-        { text: "hello", start: 0.1, end: 0.4 },
-        { text: "world", start: 1.2, end: 1.6 },
-      ] }],
-    }), { headers: { "content-type": "application/json" } });
-  }) as typeof fetch;
+        }));
+        return;
+      }
+      if (url !== "/transcribe") {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { readonly audio_path: string };
+      stagedMatches = Buffer.compare(Buffer.from(await readFile(body.audio_path)), Buffer.from(expected)) === 0;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        language: "en",
+        segments: [{ start: 0, end: 2, words: [
+          { text: "hello", start: 0.1, end: 0.4 },
+          { text: "world", start: 1.2, end: 1.6 },
+        ] }],
+      }));
+    });
+    server.listen(0, "127.0.0.1", () => resolveReady());
+    server.on("error", rejectReady);
+  });
+  const address = server!.address();
+  if (address === null || typeof address === "string") throw new Error("WhisperX test server failed to bind");
   try {
     const resources = new MemoryResourceStore();
     const artifact = await resources.put(expected, "audio/wav");
@@ -119,7 +133,7 @@ test("local Provider stages canonical evidence bytes unchanged and returns seale
     };
     const registry = new EndpointRegistry();
     await createLocalWhisperXProvider({
-      baseUrl: "http://127.0.0.1:8765",
+      baseUrl: `http://127.0.0.1:${address.port}`,
       expectedModel: "small",
       expectedDevice: "cpu",
     }).install(registry);
@@ -138,6 +152,8 @@ test("local Provider stages canonical evidence bytes unchanged and returns seale
     assert.equal((value as { readonly passages?: readonly unknown[] }).passages?.length, 1);
     assert.equal(speechTypes.evidenceAudio.name, "SpeechEvidenceAudio");
   } finally {
-    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolveClose, rejectClose) => {
+      server!.close((error) => (error === undefined ? resolveClose() : rejectClose(error)));
+    });
   }
 });

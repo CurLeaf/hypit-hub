@@ -41,6 +41,17 @@ if (args[0] === "studio" || (args[0] === "help" && args[1] === "studio")) {
     process.stderr.write(renderCliError(error, { debug: args.includes("--debug") }));
     process.exitCode = 1;
   }
+} else if (args[0] === "analysis" || (args[0] === "help" && args[1] === "analysis")) {
+  const { runAnalysis } = await import("../packages/analysis/start.ts");
+  try {
+    await runAnalysis(args[0] === "help" ? ["--help"] : args.slice(1).filter((arg) => arg !== "--debug"), {
+      write: (text) => process.stdout.write(text),
+    });
+  } catch (error) {
+    const { renderCliError } = await import("../packages/cli/src/index.ts");
+    process.stderr.write(renderCliError(error, { debug: args.includes("--debug") }));
+    process.exitCode = 1;
+  }
 } else {
   await import("../packages/video-cli/src/cli.ts");
 }

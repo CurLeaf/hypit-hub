@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     if (topic === undefined) {
       io.write(`\nCreation tools (one request through the selected Runtime Profile, no Build)\n${
         creationCommands.map((item) => `  ${item}`).join("\n")}\n  hypit help <tool> for each\n`
-        + `\nStudio\n  studio --run <build.svrun>\n  hypit studio --help for session options\n\nPreparation (local tools and project files)\n  media ${mediaCommands.join(" | ")}\n  capture screenshot | run | install-browser\n  vocabulary\n  hypit help media, hypit help capture, hypit help vocabulary\n`);
+        + `\nStudio\n  studio --run <build.svrun>\n  hypit studio --help for session options\n\nAnalysis\n  analysis [--video <path>]\n  hypit analysis --help for session options\n\nPreparation (local tools and project files)\n  media ${mediaCommands.join(" | ")}\n  capture screenshot | run | install-browser\n  vocabulary\n  hypit help media, hypit help capture, hypit help vocabulary\n`);
     }
     return;
   }

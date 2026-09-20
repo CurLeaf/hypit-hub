@@ -11,6 +11,7 @@ import { fixtureResource } from "../../../test/fixture-resource.js";
 
 import {
   decodeWhisperXSemanticTakeSurface,
+  assertWhisperXEvidenceWav,
   whisperXRequestForEvidenceAudio,
 } from "@hypit/whisperx";
 
@@ -33,6 +34,26 @@ test("WhisperX receives normalized bytes without authored Segment truth", () => 
   assert.equal("segments" in request, false);
   assert.equal(request.sampleFrames, 16_000);
   assert.equal(request.language, "es");
+});
+
+test("WhisperX accepts ffmpeg pipe WAV with unknown chunk sizes", () => {
+  const sampleFrames = 800;
+  const dataBytes = sampleFrames * 2;
+  const bytes = new Uint8Array(44 + dataBytes);
+  const view = new DataView(bytes.buffer);
+  bytes.set([... "RIFF".split("")].map((c) => c.charCodeAt(0)), 0);
+  view.setUint32(4, 0xFFFF_FFFF, true);
+  bytes.set([... "WAVEfmt ".split("")].map((c) => c.charCodeAt(0)), 8);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16_000, true);
+  view.setUint32(28, 32_000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  bytes.set([... "data".split("")].map((c) => c.charCodeAt(0)), 36);
+  view.setUint32(40, 0xFFFF_FFFF, true);
+  assert.doesNotThrow(() => assertWhisperXEvidenceWav(bytes, sampleFrames));
 });
 
 test("the real-media Surface materializes an empty Segment from its media domain", async () => {

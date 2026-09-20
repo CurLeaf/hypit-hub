@@ -1,0 +1,22 @@
+{
+  "name": "@hypit/analysis",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./start": "./start.ts"
+  },
+  "dependencies": {
+    "@hypit/cli": "workspace:*",
+    "@hypit/driver-node": "workspace:*",
+    "@hypit/estimate": "workspace:*",
+    "@hypit/project-context-node": "workspace:*",
+    "@hypit/protocol": "workspace:*",
+    "@hypit/runtime": "workspace:*",
+    "@hypit/speech": "workspace:*",
+    "@hypit/speech-evidence": "workspace:*",
+    "@hypit/video-cli": "workspace:*",
+    "@hypit/whisperx": "workspace:*",
+    "vite": "8.2.2"
+  }
+}

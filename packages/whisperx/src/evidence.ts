@@ -24,6 +24,10 @@ function fourCc(bytes: Uint8Array, offset: number): string {
   return String.fromCharCode(...bytes.subarray(offset, offset + 4));
 }
 
+function chunkByteLength(rawSize: number, body: number, bytesLength: number): number {
+  return rawSize === 0xFFFF_FFFF ? bytesLength - body : rawSize;
+}
+
 /** Refuse evidence bytes that would require a Provider to normalize audio a second time. */
 export function assertWhisperXEvidenceWav(bytes: Uint8Array, sampleFrames: number): void {
   assert(bytes.byteLength >= 44 && fourCc(bytes, 0) === "RIFF" && fourCc(bytes, 8) === "WAVE",
@@ -35,8 +39,9 @@ export function assertWhisperXEvidenceWav(bytes: Uint8Array, sampleFrames: numbe
   let dataBytes: number | undefined;
   while (offset + 8 <= bytes.byteLength) {
     const name = fourCc(bytes, offset);
-    const size = view.getUint32(offset + 4, true);
+    const rawSize = view.getUint32(offset + 4, true);
     const body = offset + 8;
+    const size = chunkByteLength(rawSize, body, bytes.byteLength);
     assert(body + size <= bytes.byteLength, "WhisperX evidence WAV has a truncated chunk");
     if (name === "fmt ") {
       assert(size >= 16, "WhisperX evidence WAV fmt chunk is invalid");
@@ -49,7 +54,7 @@ export function assertWhisperXEvidenceWav(bytes: Uint8Array, sampleFrames: numbe
     } else if (name === "data") {
       dataBytes = size;
     }
-    offset = body + size + (size % 2);
+    offset = rawSize === 0xFFFF_FFFF ? bytes.byteLength : body + size + (size % 2);
   }
   assert(format?.codec === 1 && format.channels === 1 && format.sampleRate === 16_000 && format.bits === 16,
     "WhisperX evidence must be 16 kHz mono PCM s16 WAV");
