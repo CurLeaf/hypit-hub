@@ -41,6 +41,7 @@ test("OpenAI-compatible activation accepts minimax v2 adapter settings", () => {
       baseUrl: "https://metaso.cn/api/minimax",
       apiKey: { store: "env", key: "H3_VIDEO_API_KEY" },
       uploadMode: "minimax-multipart",
+      referenceUpload: "s3",
       videoAdapter: "minimax-v2",
       models: {
         "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3",

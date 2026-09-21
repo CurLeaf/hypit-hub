@@ -2,6 +2,7 @@ import type { EndpointInvocationContext } from "@hypit/endpoint-kit";
 import type { BlobRef } from "@hypit/protocol";
 
 import type { OpenAiCompatibleClient } from "./client.js";
+import { uploadReferenceToS3 } from "./s3-upload.js";
 
 function uploadFilename(mediaType: string): string {
   const map: Record<string, string> = {
@@ -51,6 +52,9 @@ export async function uploadArtifactUrl(
   const bytes = await resources.get(artifact.resource);
   if (bytes === undefined) throw new Error("Reference media is unavailable");
   const mediaType = artifact.mediaType ?? "application/octet-stream";
+  if (client.referenceUpload === "s3") {
+    return await uploadReferenceToS3(bytes, mediaType);
+  }
   if (client.uploadMode === "minimax-multipart") {
     return await uploadMinimaxArtifactUrl(client, secret, bytes, mediaType);
   }

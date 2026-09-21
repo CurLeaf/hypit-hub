@@ -2371,6 +2371,9 @@ importers:
       '@hypit/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@hypit/resource-store-s3':
+        specifier: workspace:*
+        version: link:../resource-store-s3
       '@hypit/runtime-kit':
         specifier: workspace:*
         version: link:../runtime-kit

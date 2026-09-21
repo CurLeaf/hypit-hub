@@ -1,6 +1,7 @@
 import type { CredentialRef } from "@hypit/endpoint-kit";
 
 export type OpenAiCompatibleUploadMode = "openai-json" | "minimax-multipart";
+export type OpenAiCompatibleReferenceUpload = "gateway" | "s3";
 
 export type OpenAiCompatibleRoutes = {
   readonly image: string;
@@ -41,6 +42,7 @@ export class OpenAiCompatibleClient {
   readonly baseUrl: string;
   readonly routes: OpenAiCompatibleRoutes;
   readonly uploadMode: OpenAiCompatibleUploadMode;
+  readonly referenceUpload: OpenAiCompatibleReferenceUpload;
   readonly requestTimeoutMs: number;
   readonly fetcher: typeof globalThis.fetch;
 
@@ -48,12 +50,14 @@ export class OpenAiCompatibleClient {
     readonly baseUrl: string;
     readonly routes?: Partial<OpenAiCompatibleRoutes>;
     readonly uploadMode?: OpenAiCompatibleUploadMode;
+    readonly referenceUpload?: OpenAiCompatibleReferenceUpload;
     readonly requestTimeoutMs?: number;
     readonly fetch?: typeof globalThis.fetch;
   }) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.routes = { ...defaultOpenAiCompatibleRoutes, ...options.routes };
     this.uploadMode = options.uploadMode ?? "openai-json";
+    this.referenceUpload = options.referenceUpload ?? "gateway";
     this.requestTimeoutMs = options.requestTimeoutMs ?? 120_000;
     this.fetcher = options.fetch ?? globalThis.fetch;
   }
@@ -105,6 +109,7 @@ export type OpenAiCompatibleProviderOptions = {
   readonly models: Readonly<Record<string, string>>;
   readonly routes?: Partial<OpenAiCompatibleRoutes>;
   readonly uploadMode?: OpenAiCompatibleUploadMode;
+  readonly referenceUpload?: OpenAiCompatibleReferenceUpload;
   readonly videoAdapter?: "openai-videos" | "async-tasks" | "minimax-v2";
   readonly defaultConcurrency?: number;
   readonly pollIntervalMs?: number;

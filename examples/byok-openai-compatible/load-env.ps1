@@ -9,6 +9,6 @@ Get-Content $envFile | ForEach-Object {
   $name, $value = $_ -split '=', 2
   if ($name) { Set-Item -Path "env:$name" -Value $value }
 }
-Write-Host "Loaded: OPENAI_API_KEY, H3_VIDEO_API_KEY, HYPIT_CHAT_MODEL"
+Write-Host "Loaded: OPENAI_API_KEY, H3_VIDEO_API_KEY, HYPIT_CHAT_MODEL, S3_* (reference upload)"
 Write-Host "Run hypit from repo root, for example:"
 Write-Host "  node bin/hypit.mjs runtime up --workspace examples/byok-openai-compatible --runtime examples/byok-openai-compatible/hypit.runtime.json"

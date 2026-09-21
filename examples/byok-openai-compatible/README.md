@@ -30,6 +30,7 @@ cp .env.example .env
 
 - `OPENAI_API_KEY` → `gateway.default` (images)
 - `H3_VIDEO_API_KEY` → `gateway.minimax` (MiniMax H3 video)
+- When `gateway.minimax.referenceUpload` is `s3`, also set `S3_*` and `S3_CDN` in `.env` (see `.env.example`)
 
 ## Verify
 

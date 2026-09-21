@@ -52,6 +52,7 @@ const adapter = createRuntimeEndpointAdapterFacet({
       "models",
       "routes",
       "uploadMode",
+      "referenceUpload",
       "videoAdapter",
       "defaultConcurrency",
       "pollIntervalMs",
@@ -76,6 +77,10 @@ const adapter = createRuntimeEndpointAdapterFacet({
     if (uploadMode !== undefined && uploadMode !== "openai-json" && uploadMode !== "minimax-multipart") {
       throw new Error("OpenAI-compatible uploadMode must be openai-json or minimax-multipart");
     }
+    const referenceUpload = runtimeConfigString(config.referenceUpload, "OpenAI-compatible referenceUpload");
+    if (referenceUpload !== undefined && referenceUpload !== "gateway" && referenceUpload !== "s3") {
+      throw new Error("OpenAI-compatible referenceUpload must be gateway or s3");
+    }
     const videoAdapter = runtimeConfigString(config.videoAdapter, "OpenAI-compatible videoAdapter");
     if (videoAdapter !== undefined && videoAdapter !== "openai-videos" && videoAdapter !== "async-tasks" && videoAdapter !== "minimax-v2") {
       throw new Error("OpenAI-compatible videoAdapter must be openai-videos, async-tasks, or minimax-v2");
@@ -89,6 +94,7 @@ const adapter = createRuntimeEndpointAdapterFacet({
         models,
         routes,
         ...(uploadMode === undefined ? {} : { uploadMode }),
+        ...(referenceUpload === undefined ? {} : { referenceUpload }),
         ...(videoAdapter === undefined ? {} : { videoAdapter }),
         defaultConcurrency: runtimeConfigPositiveInteger(config.defaultConcurrency, "OpenAI-compatible defaultConcurrency"),
         pollIntervalMs: runtimeConfigPositiveInteger(config.pollIntervalMs, "OpenAI-compatible pollIntervalMs"),

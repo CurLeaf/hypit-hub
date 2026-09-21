@@ -18,6 +18,7 @@ export function createOpenAiCompatibleProvider(options: OpenAiCompatibleProvider
     baseUrl: options.baseUrl,
     ...(options.routes === undefined ? {} : { routes: options.routes }),
     ...(options.uploadMode === undefined ? {} : { uploadMode: options.uploadMode }),
+    ...(options.referenceUpload === undefined ? {} : { referenceUpload: options.referenceUpload }),
     ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
