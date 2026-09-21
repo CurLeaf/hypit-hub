@@ -170,11 +170,11 @@ export async function generateUgcReplicaProject(input: {
       adaptedScenes = await adaptScenesForProduct({
         session,
         insight,
-        treatment,
-        brief: input.brief,
+        ...(treatment === undefined ? {} : { treatment }),
+        ...(input.brief === undefined ? {} : { brief: input.brief }),
         scenes: baseScenes,
-        goal: input.goal,
-        runtimePath: input.runtimePath,
+        ...(input.goal === undefined ? {} : { goal: input.goal }),
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         requireSuccess: true,
       });
     }
@@ -182,9 +182,9 @@ export async function generateUgcReplicaProject(input: {
   const promptMap = await buildScenePrompts({
     session,
     insight,
-    treatment,
+    ...(treatment === undefined ? {} : { treatment }),
     formatId,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scenes: adaptedScenes,
     requireSuccess: hasProductReference,
   });
@@ -210,7 +210,7 @@ export async function generateUgcReplicaProject(input: {
         mode: speechMode,
         session,
         destination: audioPath,
-        runtimePath: input.runtimePath,
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         scriptText: spokenText,
         extractReferenceAudio,
       });
@@ -281,7 +281,7 @@ export async function generateUgcReplicaProject(input: {
         mode: "tts",
         session,
         destination: speechSource,
-        runtimePath: input.runtimePath,
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         scriptText: spokenText,
         extractReferenceAudio,
       });
@@ -296,7 +296,7 @@ export async function generateUgcReplicaProject(input: {
       voiceSampleText: speakingScenes[0]?.text ?? spokenText.slice(0, 120),
       voiceCastingDirection:
         "A clear, engaging Chinese short-form product presenter voice: bright, confident, conversational, with natural emphasis for social-video promo delivery.",
-      voiceAssetRel: capabilities.fishSpeech ? undefined : voiceRel,
+      ...(capabilities.fishSpeech ? {} : { voiceAssetRel: voiceRel }),
       productImageRef: "product-reference.image",
     });
     officialSpeakerImports = official.imports;

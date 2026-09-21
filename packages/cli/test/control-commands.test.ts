@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import type { CliDistribution } from "../src/distribution.js";
@@ -156,6 +158,8 @@ test("status --watch follows active execution, then reads its finished Result", 
 });
 
 test("status reads a finished project Result without a Runtime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hypit-control-finished-"));
+  const previous = process.cwd();
   const calls: string[] = [];
   const distribution = {
     openRuntimeHost: async () => {
@@ -181,9 +185,17 @@ test("status reads a finished project Result without a Runtime", async () => {
   } as unknown as CliDistribution;
   let output = "";
 
-  await runCli([
-    "status", "build-finished", "--json",
-  ], { write: (text) => { output += text; } }, distribution);
+  try {
+    // An ambient Runtime selection outside the project must not change what
+    // `status` does, so run from a directory with no selection at all.
+    process.chdir(root);
+    await runCli([
+      "status", "build-finished", "--json",
+    ], { write: (text) => { output += text; } }, distribution);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
 
   const result = JSON.parse(output) as {
     readonly build: { readonly id: string; readonly work: { readonly outcome: string }; readonly result: { readonly state: string } };
@@ -195,6 +207,8 @@ test("status reads a finished project Result without a Runtime", async () => {
 });
 
 test("finished status defaults to the Result outcome without repeating internal layers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hypit-control-outcome-"));
+  const previous = process.cwd();
   const distribution = {
     openProjectResults: async () => ({
       repository: {
@@ -215,9 +229,17 @@ test("finished status defaults to the Result outcome without repeating internal 
   } as unknown as CliDistribution;
   let output = "";
 
-  await runCli(["status", "build-finished"], {
-    write(text) { output += text; },
-  }, distribution);
+  try {
+    // An ambient Runtime selection outside the project must not change what
+    // plain-language `status` reports.
+    process.chdir(root);
+    await runCli(["status", "build-finished"], {
+      write(text) { output += text; },
+    }, distribution);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
 
   assert.match(output, /Build complete/u);
   assert.match(output, /Outcome\s+complete/u);

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +20,12 @@ export function writeAnalysisHelp(io: Pick<CliIo, "write">): void {
 
 需要 Runtime 已选择且 runtime up，才能转写对白（WhisperX）。
 画面探测与结构推断仅依赖本地 ffmpeg。
+
+界面是热更新的：样式改动即时替换，界面代码改动后浏览器自动刷新，分析状态保存在
+服务端，刷新不会丢。在源码仓库中开发时，用 node --watch 启动还可让服务端代码
+（packages/analysis/src 下的模块）在改动后自动重启：
+
+  node --watch bin/hypit.mjs analysis
 
 相对路径以当前目录为基准；--workspace 选择项目边界。
 `);
@@ -77,17 +84,24 @@ export async function runAnalysis(argv: readonly string[], io: Pick<CliIo, "writ
       ? resolve(workspaceRoot, videoArgument)
       : resolve(invokedFrom, videoArgument);
 
+  const distributionRoot = resolve(here, "../..");
+  // A checkout of this repository carries its own workspace manifest; an installed Distribution
+  // does not. Only a checkout can pick up an edited source file, so only there is the watching
+  // command worth printing.
+  const sourceCheckout = existsSync(resolve(distributionRoot, "pnpm-workspace.yaml"));
   console.info([
     `  项目              ${workspaceRoot}`,
     `  Runtime Profile   ${runtimePath ?? "未选择"}`,
     `  默认语言          ${language}`,
     ...(initialVideo === undefined ? [] : [`  初始视频          ${initialVideo}`]),
+    ...(sourceCheckout
+      ? [`  热更新            UI 与样式即时生效；服务端代码用 node --watch bin/hypit.mjs analysis 启动可自动重启`]
+      : []),
     "",
   ].join("\n"));
 
   const { createServer } = await import("vite");
   const { analysisPlugin } = await import("./src/server.js");
-  const distributionRoot = resolve(here, "../..");
   const server = await createServer({
     configFile: false,
     root: here,

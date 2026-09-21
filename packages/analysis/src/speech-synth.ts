@@ -25,7 +25,7 @@ export async function resolveSpeechAudio(input: {
   await synthesizeOpenAiSpeech({
     text,
     destination: input.destination,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     workspaceRoot: input.session.workspaceRoot,
   });
   return { path: input.destination, mode: "tts" };

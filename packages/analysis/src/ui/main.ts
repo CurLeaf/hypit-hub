@@ -553,7 +553,7 @@ function renderMediaPreview(url: string | undefined, kind: "audio" | "video"): H
   const media = document.createElement(kind);
   media.className = kind === "audio" ? "media-preview audio-preview" : "media-preview result-video";
   media.controls = true;
-  media.playsInline = true;
+  if (media instanceof HTMLVideoElement) media.playsInline = true;
   media.src = url;
   return media;
 }
@@ -1109,7 +1109,7 @@ function seekTo(time: number): void {
 }
 
 function highlightActiveWord(): void {
-  for (const node of document.querySelectorAll<HTMLElement>(".word")) {
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>(".word"))) {
     const start = Number(node.dataset.start);
     const end = Number(node.dataset.end);
     node.classList.toggle("active", Number.isFinite(start) && Number.isFinite(end) && currentTime >= start && currentTime < end);

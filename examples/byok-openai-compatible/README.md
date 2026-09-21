@@ -97,7 +97,8 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 ## Gateway notes
 
 - **Text-to-image** uses `POST /images/generations` with `prompt`, `size`, and `model`.
-- **Image + reference** uploads media to `POST /files`, then uses `POST /images/edits` with `reference_images`.
+- **Image + reference** uploads media to `POST <baseUrl>/files`, then uses `POST /images/edits` with
+  `reference_images`.
 - **MiniMax H3 ReferenceVideo** uses `POST /videos` with `reference_image_urls`, `reference_audios`, `prompt`, `seconds`, etc.
 - **Other videos** use `POST /videos` and poll `GET /videos/{id}` by default.
 - If your gateway exposes async jobs at `/tasks/{id}`, set `videoAdapter` to `async-tasks` and
@@ -106,9 +107,26 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 
 ## Known limits
 
-- `gpt-image-2` reference edits and H3 ReferenceVideo both require `POST /files` upload on your gateway.
+- `gpt-image-2` reference edits and H3 ReferenceVideo both require the `POST <baseUrl>/files` upload on your gateway.
 - H3 is bound as `@hypit/minimax-h3@1#minimax-h3` → `MiniMax-H3` on `gateway.minimax` (`H3_VIDEO_API_KEY`).
 - H3 clips are capped at 15 seconds per request; longer references are clamped in the replica scaffold.
 - Speech/TTS capabilities are not wired in this example Profile.
 - Video payload shape follows OpenAI-style `videos` routes; custom gateways may need route or
   adapter adjustments in `@hypit/provider-openai-compatible`.
+
+## Comparing video models
+
+Each Endpoint offers only the capabilities listed in its own `models` map, so adding a second video
+model is a Profile edit rather than a code change. For example, to render the same treatment with
+Seedance beside MiniMax H3, add a mapping to the gateway that serves it:
+
+```json
+"models": {
+  "@hypit/gpt-image@1#gpt-image-2": "gpt-image-2",
+  "@hypit/seedance@1#seedance-2-mini": "seedance-2-mini"
+}
+```
+
+Author a Run per model and compare the two Results; `plan` names the Endpoint and remote model each
+request will use before anything is submitted. Two Endpoints mapping the same capability is the one
+case that needs a `bindings` entry saying which one runs it.

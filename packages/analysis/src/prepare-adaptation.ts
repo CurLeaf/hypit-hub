@@ -19,7 +19,7 @@ export async function prepareProductAdaptation(input: {
   readonly session: AnalysisSessionView;
   readonly runtimePath?: string;
   readonly goal?: string;
-  readonly onPhase?(phase: string): void;
+  onPhase?(phase: string): void;
 }): Promise<AdaptationView> {
   const { session } = input;
   if (session.analysisPath === undefined) throw new Error("请先完成参考视频分析");
@@ -31,7 +31,7 @@ export async function prepareProductAdaptation(input: {
   input.onPhase?.("解读参考片…");
   const insight = await generateInsight({
     session,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
 
@@ -39,8 +39,8 @@ export async function prepareProductAdaptation(input: {
   const brief = session.brief ?? await generateBrief({
     session,
     insight,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
   await writeFile(join(dir, "BRIEF.md"), `${brief.markdown.trim()}\n`, "utf8");
@@ -50,7 +50,7 @@ export async function prepareProductAdaptation(input: {
     session,
     insight,
     brief,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
   await writeFile(join(dir, "TREATMENT.md"), `${treatment.markdown.trim()}\n`, "utf8");
@@ -63,8 +63,8 @@ export async function prepareProductAdaptation(input: {
     brief,
     treatment,
     scenes: baseScenes,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireSuccess: true,
   });
   const spokenText = adaptedScenes
@@ -79,7 +79,7 @@ export async function prepareProductAdaptation(input: {
     mode: "tts",
     session,
     destination: generatedSpeechPath,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scriptText: spokenText,
     extractReferenceAudio,
   });

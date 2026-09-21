@@ -5,6 +5,7 @@ import { EndpointRegistry, MemoryResourceStore } from "@hypit/driver-node";
 import { sealGptImage2Request } from "@hypit/gpt-image";
 import { canonicalize } from "@hypit/endpoint-kit";
 import { generationTypes } from "@hypit/generation";
+import type { ResourceId } from "@hypit/protocol";
 
 import { sealSeedanceRequest } from "@hypit/seedance";
 
@@ -64,7 +65,7 @@ test("OpenAI-compatible provider generates an image through /images/generations"
     credentials: { apiKey: { secret: "test-key" } },
   });
   assert.equal(result.value.kind, "inline");
-  const images = (result.value.value as unknown as { images: { resource: string; mediaType: string }[] }).images;
+  const images = (result.value.value as unknown as { images: readonly { resource: ResourceId; mediaType: string }[] }).images;
   assert.equal(images[0]?.mediaType, "image/png");
   assert.deepEqual(await resources.get(images[0]!.resource), new Uint8Array([9, 8, 7]));
   assert.deepEqual(calls, ["/v1/images/generations"]);
@@ -85,7 +86,7 @@ test("OpenAI-compatible provider generates an image with references through /ima
     fetch: async (input, init) => {
       const url = new URL(String(input));
       calls.push(url.pathname);
-      if (url.pathname === "/files") {
+      if (url.pathname === "/v1/files") {
         return Response.json({ url: "https://gateway.example/files/ref-1" });
       }
       if (url.pathname === "/v1/images/edits") {
@@ -120,6 +121,7 @@ test("OpenAI-compatible provider generates an image with references through /ima
   await provider.install(registry);
   const resolution = registry.resolve(need);
   assert.equal(resolution.status, "resolved");
+  assert.equal(resolution.registration.kind, "immediate");
   const result = await resolution.registration.handler({
     need,
     command: { kind: "fulfill-need", id: "command:reference-image", need },
@@ -127,7 +129,7 @@ test("OpenAI-compatible provider generates an image with references through /ima
     credentials: { apiKey: { secret: "test-key" } },
   });
   assert.equal(result.value.kind, "inline");
-  assert.deepEqual(calls, ["/files", "/v1/images/edits"]);
+  assert.deepEqual(calls, ["/v1/files", "/v1/images/edits"]);
 });
 
 test("OpenAI-compatible provider rejects unsupported aspect ratios", async () => {
@@ -170,8 +172,8 @@ test("OpenAI-compatible provider submits Seedance ReferenceVideo with uploaded i
     fetch: async (input, init) => {
       const url = new URL(String(input));
       calls.push(url.pathname);
-      if (url.pathname === "/files") {
-        const index = calls.filter((path) => path === "/files").length;
+      if (url.pathname === "/v1/files") {
+        const index = calls.filter((path) => path === "/v1/files").length;
         return Response.json({ url: `https://gateway.example/files/ref-${index}` });
       }
       if (url.pathname === "/v1/videos") {
@@ -180,6 +182,9 @@ test("OpenAI-compatible provider submits Seedance ReferenceVideo with uploaded i
         assert.equal(body.prompt, "Presenter explains the product");
         assert.deepEqual(body.reference_image_urls, ["https://gateway.example/files/ref-1"]);
         assert.deepEqual(body.reference_audios, ["https://gateway.example/files/ref-2"]);
+        return Response.json({ id: "video-ref", status: "completed", output_url: "https://assets.example/output.mp4" });
+      }
+      if (url.pathname === "/v1/videos/video-ref") {
         return Response.json({ id: "video-ref", status: "completed", output_url: "https://assets.example/output.mp4" });
       }
       if (url.hostname === "assets.example") {
@@ -208,10 +213,11 @@ test("OpenAI-compatible provider submits Seedance ReferenceVideo with uploaded i
   await provider.install(registry);
   const resolution = registry.resolve(need);
   assert.equal(resolution.status, "resolved");
+  assert.equal(resolution.registration.kind, "asynchronous");
   const endpoint = resolution.registration.endpoint;
   const context = {
     need,
-    command: { kind: "fulfill-need", id: "command:seedance-ref", need },
+    command: { kind: "fulfill-need" as const, id: "command:seedance-ref", need },
     operation: "operation:seedance-ref",
     resources,
     credentials: { apiKey: { secret: "test-key" } },
@@ -221,7 +227,7 @@ test("OpenAI-compatible provider submits Seedance ReferenceVideo with uploaded i
   assert.equal(start.status, "ready");
   const collected = await endpoint.collect!({ ...context, handle: start.handle });
   assert.equal(collected.status, "completed");
-  assert.deepEqual(calls, ["/files", "/files", "/v1/videos"]);
+  assert.deepEqual(calls, ["/v1/files", "/v1/files", "/v1/videos", "/v1/videos/video-ref", "/output.mp4"]);
 });
 
 test("OpenAI-compatible provider polls async video jobs", async () => {
@@ -273,7 +279,7 @@ test("OpenAI-compatible provider polls async video jobs", async () => {
   const endpoint = resolution.registration.endpoint;
   const context = {
     need,
-    command: { kind: "fulfill-need", id: "command:video", need },
+    command: { kind: "fulfill-need" as const, id: "command:video", need },
     operation: "operation:video",
     resources,
     credentials: { apiKey: { secret: "test-key" } },
@@ -287,6 +293,46 @@ test("OpenAI-compatible provider polls async video jobs", async () => {
   assert.equal(done.status, "ready");
   const collected = await endpoint.collect!({ ...context, handle: done.handle });
   assert.equal(collected.status, "completed");
-  const videos = (collected.result!.value.value as unknown as { videos: { mediaType: string }[] }).videos;
+  const completed = collected.result!;
+  assert.equal(completed.value.kind, "inline");
+  const videos = (completed.value.value as unknown as { videos: { mediaType: string }[] }).videos;
   assert.equal(videos[0]?.mediaType, "video/mp4");
+});
+
+const gateway = {
+  instance: "gateway.default",
+  pool: "gateway.default",
+  baseUrl: "https://gateway.example/v1",
+  apiKey: { store: "env", key: "OPENAI_API_KEY" },
+} as const;
+
+test("OpenAI-compatible provider declares only the capabilities its model map names", () => {
+  const provider = createOpenAiCompatibleProvider({
+    ...gateway,
+    models: { "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3" },
+  });
+  assert.deepEqual(provider.offers.map((offer) => offer.capability.name), ["minimax-h3"]);
+});
+
+test("OpenAI-compatible provider offers every mapped video model beside the image capability", () => {
+  const provider = createOpenAiCompatibleProvider({
+    ...gateway,
+    models: {
+      "@hypit/gpt-image@1#gpt-image-2": "gpt-image-2",
+      "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3",
+      "@hypit/seedance@1#seedance-2-mini": "seedance-2-mini",
+    },
+  });
+  assert.deepEqual(provider.offers.map((offer) => offer.capability.name), [
+    "gpt-image-2",
+    "minimax-h3",
+    "seedance-2-mini",
+  ]);
+});
+
+test("OpenAI-compatible provider rejects a model mapping it does not implement", () => {
+  assert.throws(
+    () => createOpenAiCompatibleProvider({ ...gateway, models: { "@hypit/example@1#thing": "thing" } }),
+    /models declares @hypit\/example@1#thing, which this Provider does not implement/u,
+  );
 });

@@ -180,6 +180,8 @@
     "test:provider-openai-compatible": "node --import tsx --test packages/provider-openai-compatible/test/provider.test.ts",
     "test:analysis": "node --import tsx --test packages/analysis/test/insight-builder.test.ts",
     "hypit": "node bin/hypit.mjs",
+    "analysis": "node bin/hypit.mjs analysis",
+    "analysis:watch": "node --watch bin/hypit.mjs analysis",
     "studio": "node bin/hypit.mjs studio",
     "prepack": "npm run build:public-types"
   },

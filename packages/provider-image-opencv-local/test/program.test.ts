@@ -29,6 +29,31 @@ test("OpenCV declares how to install its interpreter and nothing to keep running
   assert.equal(program.stateRoot, join(context().hostStateRoot, "programs", "image-opencv-opencv.test"));
 });
 
+/**
+ * `HYPIT_PYTHON` names the interpreter this uv project is built from, so a machine that already
+ * manages Python with vfox, mise, asdf or pyenv does not grow a second one under uv's data
+ * directory. It reaches uv as `UV_PYTHON`; an explicit `UV_PYTHON` is left untouched.
+ */
+test("a managed OpenCV environment is built from the interpreter the machine already has", () => {
+  const saved = { HYPIT_PYTHON: process.env.HYPIT_PYTHON, UV_PYTHON: process.env.UV_PYTHON };
+  try {
+    delete process.env.UV_PYTHON;
+    process.env.HYPIT_PYTHON = "/opt/vfox/sdks/python/bin/python3.13";
+    const managed = resolveLocalOpenCvDeployment(context());
+    assert.equal(managed.installCommands?.[0]?.env?.UV_PYTHON, "/opt/vfox/sdks/python/bin/python3.13");
+
+    process.env.UV_PYTHON = "3.12";
+    const explicit = resolveLocalOpenCvDeployment(context());
+    assert.equal(explicit.installCommands?.[0]?.env?.UV_PYTHON, undefined);
+  } finally {
+    delete process.env.HYPIT_PYTHON;
+    delete process.env.UV_PYTHON;
+    for (const [name, value] of Object.entries(saved)) {
+      if (value !== undefined) process.env[name] = value;
+    }
+  }
+});
+
 test("an interpreter without cv2 is reported here, not mid-Build", async () => {
   // `false` exits non-zero without printing a version report.
   const selected = context("/usr/bin/false");

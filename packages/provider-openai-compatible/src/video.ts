@@ -5,11 +5,12 @@ import type {
   EndpointRequest,
   EndpointStartContext,
 } from "@hypit/endpoint-kit";
-import { compileWireRequest, generationTypes, sealGeneratedVideoSet } from "@hypit/generation";
-import type { BlobRef, GenerationRequest } from "@hypit/generation";
+import { compileWireRequest, sealGeneratedVideoSet } from "@hypit/generation";
+import type { GenerationRequest } from "@hypit/generation";
+import type { BlobRef } from "@hypit/protocol";
 
 import type { OpenAiCompatibleClient } from "./client.js";
-import { mappingForCapability, openAiCompatibleMappings } from "./mappings.js";
+import { mappingForCapability } from "./mappings.js";
 import { uploadArtifactUrl } from "./upload.js";
 
 type VideoHandle = {
@@ -175,10 +176,3 @@ export function createVideoEndpoint(
     },
   };
 }
-
-export const asyncVideoCapabilities = openAiCompatibleMappings
-  .filter((mapping) => mapping.result === "video")
-  .map((mapping) => ({
-    capability: mapping.capability,
-    returns: generationTypes.videoSet,
-  }));

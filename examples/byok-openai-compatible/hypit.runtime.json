@@ -2,8 +2,7 @@
   "format": "hypit.runtime-local@1",
   "dataRoot": ".hypit/runtimes/local",
   "credentials": {
-    "env": { "use": "@hypit/credential-store-env" },
-    "os": { "use": "@hypit/credential-store-os" }
+    "env": { "use": "@hypit/credential-store-env" }
   },
   "endpoints": {
     "whisperx.local": {

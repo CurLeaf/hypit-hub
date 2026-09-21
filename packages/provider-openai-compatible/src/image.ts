@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { canonicalize } from "@hypit/endpoint-kit";
-import type { EndpointInvocationContext, EndpointRequest, ImmediateEndpointHandler } from "@hypit/endpoint-kit";
+import type { EndpointFulfillment, EndpointInvocationContext, EndpointRequest, ImmediateEndpointHandler } from "@hypit/endpoint-kit";
 import { compileWireRequest, generationTypes, sealGeneratedImageSet } from "@hypit/generation";
 import type { GenerationRequest } from "@hypit/generation";
 
@@ -100,7 +100,7 @@ async function packageImageResponse(
   client: OpenAiCompatibleClient,
   response: Record<string, unknown>,
   context: EndpointInvocationContext,
-) {
+): Promise<EndpointFulfillment> {
   const data = response.data;
   if (!Array.isArray(data) || data.length === 0) throw new Error("OpenAI-compatible image response contained no data");
   const [first] = data;

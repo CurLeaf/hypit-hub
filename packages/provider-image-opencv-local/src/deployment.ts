@@ -6,6 +6,7 @@ import type { ManagedProgramCommand } from "@hypit/runtime-kit";
 import {
   pythonEnvironmentExecutable,
   resolveRuntimeExecutable,
+  uvPythonEnvironment,
 } from "@hypit/runtime-host-node";
 
 /**
@@ -61,7 +62,7 @@ export function resolveLocalOpenCvDeployment(
     installCommands: [{
       command: "uv",
       args: ["sync", "--project", localOpenCvManagedProject, "--frozen"],
-      env: { UV_PROJECT_ENVIRONMENT: environment },
+      env: { UV_PROJECT_ENVIRONMENT: environment, ...uvPythonEnvironment() },
     }],
     ownership: "managed",
   };

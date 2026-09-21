@@ -3556,7 +3556,11 @@ importers:
         specifier: workspace:*
         version: link:../workspace
 
-  packages/yt-dlp: {}
+  packages/yt-dlp:
+    dependencies:
+      '@hypit/runtime-host-node':
+        specifier: workspace:*
+        version: link:../runtime-host-node
 
   services/image-opencv: {}
 

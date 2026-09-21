@@ -66,9 +66,9 @@ export async function checkReplicationReadiness(
     : undefined;
   const report = await buildOfficialPathReport({
     session,
-    runtimePath,
-    forBuild: options?.forBuild,
-    svmlPath,
+    ...(runtimePath === undefined ? {} : { runtimePath }),
+    ...(options?.forBuild === undefined ? {} : { forBuild: options.forBuild }),
+    ...(svmlPath === undefined ? {} : { svmlPath }),
   });
   const issues = report.checks.filter((check) => !check.ok).map((check) => `${check.label}：${check.detail}`);
 
