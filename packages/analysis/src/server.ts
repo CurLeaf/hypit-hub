@@ -22,6 +22,7 @@ import {
   runFullAnalysis,
 } from "./engine.js";
 import { writeReferenceArchive } from "./reference-archive.js";
+import { DEFAULT_VIDEO_NAME, materializeDefaultVideo, resolveDefaultVideoUrl } from "./default-video.js";
 import { loadChatGateway } from "./llm.js";
 import type { AnalysisConfigView, AnalysisSessionView } from "./shared.js";
 import { prepareProductAdaptation } from "./prepare-adaptation.js";
@@ -64,11 +65,15 @@ function analysisErrorMessage(error: unknown): string {
   if (/Headers Timeout Error|HeadersTimeoutError|timed out after/u.test(message)) {
     return "WhisperX 转写超时。CPU 首次推理较慢，请稍后重试；或在 Runtime Profile 中增大 whisperx.local 的 requestTimeoutMs。";
   }
+  if (code === "ECONNREFUSED"
+    || /connect ECONNREFUSED 127\.0\.0\.1:8765/u.test(message)
+    || /nothing is answering at http:\/\/127\.0\.0\.1:8765/u.test(message)) {
+    return "WhisperX 本地环境已安装，但 127.0.0.1:8765 上的服务未启动。请运行 hypit runtime up --endpoint whisperx.local。";
+  }
   if (message === "fetch failed"
-    || code === "ECONNREFUSED"
     || code === "ECONNRESET"
     || /connect ECONNREFUSED|connect ECONNRESET/u.test(message)) {
-    return "无法连接 WhisperX 本地服务。请运行 hypit runtime up。";
+    return "无法连接本地 Runtime 或 WhisperX 服务。请运行 hypit runtime up。";
   }
   return message;
 }
@@ -93,6 +98,7 @@ async function mergeWorkflow(session: AnalysisSessionView): Promise<AnalysisSess
 }
 
 export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
+  void loadWorkspaceEnv(distributionRoot);
   void loadWorkspaceEnv(options.workspaceRoot);
   let session: AnalysisSessionView = { workspaceRoot: options.workspaceRoot };
   let jobRunning = false;
@@ -116,6 +122,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
   async function refreshConfig(): Promise<AnalysisConfigView> {
     const runtime = await resolveRuntime();
     const gateway = await loadChatGateway(runtime, options.workspaceRoot);
+    const defaultVideoUrl = resolveDefaultVideoUrl();
     return {
       ...config,
       ...(runtime === undefined ? {} : { runtimeProfile: runtime }),
@@ -126,12 +133,32 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         hasChatApiKey: (process.env[gateway.apiKeyEnv]?.trim().length ?? 0) > 0,
       }),
       hasH3ApiKey: (process.env.H3_VIDEO_API_KEY?.trim().length ?? 0) > 0,
+      ...(defaultVideoUrl === undefined ? {} : {
+        defaultVideoUrl,
+        defaultVideoName: DEFAULT_VIDEO_NAME,
+      }),
+    };
+  }
+
+  async function adoptImportedVideo(target: string, imported: { readonly videoName: string; readonly videoUrl?: string }): Promise<void> {
+    const probe = await probeMedia(target);
+    await clearWorkflowState(options.workspaceRoot);
+    const runtimePath = await resolveRuntime();
+    session = {
+      workspaceRoot: options.workspaceRoot,
+      ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }),
+      videoPath: target,
+      videoName: imported.videoName,
+      probe,
+      job: { id: "upload", status: "complete" },
+      ...(imported.videoUrl === undefined ? {} : { videoUrl: imported.videoUrl }),
     };
   }
 
   async function persistWorkflow(): Promise<void> {
     await saveWorkflowState(options.workspaceRoot, {
       ...(session.videoPath === undefined ? {} : { videoPath: session.videoPath }),
+      ...(session.videoUrl === undefined ? {} : { videoUrl: session.videoUrl }),
       ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
       ...(session.productReferenceName === undefined ? {} : { productReferenceName: session.productReferenceName }),
       ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
@@ -297,6 +324,11 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             void (async () => {
               try {
                 const runtimePath = await resolveRuntime();
+                session = {
+                  ...session,
+                  job: { ...(session.job ?? { id: "latest", status: "running" }), status: "running", phase: "启动 WhisperX…" },
+                };
+                await ensureRuntimeUp(options.workspaceRoot, runtimePath, ["whisperx.local"]);
                 const result = await runFullAnalysis({
                   workspaceRoot: options.workspaceRoot,
                   videoPath,
@@ -637,17 +669,23 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             await mkdir(dirname(staging), { recursive: true });
             await writeFile(staging, fileBytes);
             const target = await importUploadedFile(staging, options.workspaceRoot, fileName);
-            const probe = await probeMedia(target);
-            await clearWorkflowState(options.workspaceRoot);
-            const runtimePath = await resolveRuntime();
-            session = {
+            await adoptImportedVideo(target, { videoName: basename(target) });
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/use-default-video") {
+            const defaultVideoUrl = resolveDefaultVideoUrl();
+            if (defaultVideoUrl === undefined) throw new Error("未配置默认视频。请运行 pnpm upload:origin");
+            const localFallback = resolve(distributionRoot, DEFAULT_VIDEO_NAME);
+            const target = await materializeDefaultVideo({
+              url: defaultVideoUrl,
               workspaceRoot: options.workspaceRoot,
-              ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }),
-              videoPath: target,
-              videoName: basename(target),
-              probe,
-              job: { id: "upload", status: "complete" },
-            };
+              ...(existsSync(localFallback) ? { localFallback } : {}),
+            });
+            await adoptImportedVideo(target, { videoName: DEFAULT_VIDEO_NAME, videoUrl: defaultVideoUrl });
+            await persistWorkflow();
             json(response, 200, session);
             return;
           }
@@ -719,6 +757,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       });
     },
     async buildStart(): Promise<void> {
+      await loadWorkspaceEnv(distributionRoot);
+      await loadWorkspaceEnv(options.workspaceRoot);
       const saved = await loadSavedAnalysis(options.workspaceRoot);
       if (saved !== undefined) {
         session = await mergeWorkflow(saved);

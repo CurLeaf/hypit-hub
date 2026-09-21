@@ -1,5 +1,7 @@
 import type { CredentialRef } from "@hypit/endpoint-kit";
 
+import type { S3PublicUploadConfig } from "./s3-public-upload.js";
+
 export type OpenAiCompatibleRoutes = {
   readonly image: string;
   readonly imageEdits: string;
@@ -103,6 +105,8 @@ export type OpenAiCompatibleProviderOptions = {
   readonly operationTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
   readonly fetch?: typeof globalThis.fetch;
+  /** When set, reference image/audio go to this public OSS/S3 bucket instead of `POST /files`. */
+  readonly referenceUpload?: S3PublicUploadConfig;
 };
 
 export function capabilityKey(capability: { module: { name: string; version: string }; name: string }): string {

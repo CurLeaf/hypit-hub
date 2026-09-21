@@ -10,6 +10,7 @@ import type { CanonicalValue } from "@hypit/protocol";
 
 import { defaultOpenAiCompatibleRoutes, normalizeBaseUrl } from "./client.js";
 import { createOpenAiCompatibleProvider } from "./provider.js";
+import { s3PublicUploadConfigFromEnv } from "./s3-public-upload.js";
 
 function modelMap(config: Record<string, CanonicalValue>): Readonly<Record<string, string>> {
   if (config.models === undefined) throw new Error("OpenAI-compatible models config must be an object");
@@ -60,11 +61,20 @@ const adapter = createRuntimeEndpointAdapterFacet({
       "chatModel",
       "ttsModel",
       "ttsVoice",
+      "referenceUpload",
     ], "OpenAI-compatible");
     const baseUrl = runtimeConfigString(config.baseUrl, "OpenAI-compatible baseUrl");
     runtimeConfigString(config.chatModel, "OpenAI-compatible chatModel");
     runtimeConfigString(config.ttsModel, "OpenAI-compatible ttsModel");
     runtimeConfigString(config.ttsVoice, "OpenAI-compatible ttsVoice");
+    const referenceUploadMode = runtimeConfigString(config.referenceUpload, "OpenAI-compatible referenceUpload") ?? "gateway";
+    if (referenceUploadMode !== "gateway" && referenceUploadMode !== "s3") {
+      throw new Error("OpenAI-compatible referenceUpload must be gateway or s3");
+    }
+    const referenceUpload = referenceUploadMode === "s3" ? s3PublicUploadConfigFromEnv() : undefined;
+    if (referenceUploadMode === "s3" && referenceUpload === undefined) {
+      throw new Error("OpenAI-compatible referenceUpload s3 needs S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_BUCKET_NAME, S3_REGION, S3_CDN");
+    }
     if (baseUrl === undefined) throw new Error("OpenAI-compatible baseUrl is required");
     normalizeBaseUrl(baseUrl);
     const apiKey = runtimeConfigCredentialRef(config.apiKey, "OpenAI-compatible apiKey");
@@ -95,6 +105,7 @@ const adapter = createRuntimeEndpointAdapterFacet({
         ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
         ...(operationTimeoutMs === undefined ? {} : { operationTimeoutMs }),
         ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
+        ...(referenceUpload === undefined ? {} : { referenceUpload }),
       }),
     };
   },

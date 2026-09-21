@@ -28,6 +28,7 @@ export type WorkflowState = Pick<AnalysisSessionView,
   "insight" | "brief" | "treatment" | "scaffold" | "build" | "adaptation" | "adaptationGoal"
   | "productReferencePath" | "productReferenceName" | "videoAroll"> & {
   readonly videoPath?: string;
+  readonly videoUrl?: string;
 };
 
 export async function loadWorkflowState(workspaceRoot: string): Promise<WorkflowState> {

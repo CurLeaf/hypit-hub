@@ -9,6 +9,7 @@ import {
 } from "./client.js";
 import { mappingForCapability, openAiCompatibleMappings } from "./mappings.js";
 import { createImageHandler, gptImage2Returns, imageSupport } from "./image.js";
+import { createArtifactUrlResolver } from "./upload.js";
 import { createVideoEndpoint, videoSupport } from "./video.js";
 
 export const providerModule = { name: "@hypit/provider-openai-compatible", version: "1" } as const;
@@ -48,12 +49,17 @@ export function createOpenAiCompatibleProvider(options: OpenAiCompatibleProvider
     }
     return mapped;
   };
-  const imageHandler = createImageHandler(client, modelFor);
+  const resolveArtifactUrl = createArtifactUrlResolver(
+    client,
+    ...(options.referenceUpload === undefined ? [] : [options.referenceUpload]),
+  );
+  const imageHandler = createImageHandler(client, modelFor, resolveArtifactUrl);
   const videoEndpoint = createVideoEndpoint(client, options.models, {
     videoAdapter,
     pollIntervalMs,
     operationTimeoutMs,
     modelFor,
+    resolveArtifactUrl,
   });
   const supportsWithModels = (request: EndpointRequest) => {
     if (options.models[capabilityKey(request.capability)] === undefined) {

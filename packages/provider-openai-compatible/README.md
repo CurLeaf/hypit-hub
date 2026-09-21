@@ -36,10 +36,22 @@ separately in the same Profile.
         },
         "videoAdapter": "openai-videos"
       }
+    },
+    "gateway.minimax": {
+      "use": "@hypit/provider-openai-compatible",
+      "config": {
+        "baseUrl": "https://api.minimax.chat/v1",
+        "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
+        "referenceUpload": "s3",
+        "models": {
+          "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
+        }
+      }
     }
   },
   "bindings": {
-    "@hypit/gpt-image@1#gpt-image-2": "gateway.default"
+    "@hypit/gpt-image@1#gpt-image-2": "gateway.default",
+    "@hypit/minimax-h3@1#minimax-h3": "gateway.minimax"
   }
 }
 ```
@@ -57,7 +69,12 @@ separately in the same Profile.
 | `pollIntervalMs` | Async video poll interval |
 | `operationTimeoutMs` | Async video timeout |
 | `chatModel`, `ttsModel`, `ttsVoice` | Optional. Read by the authoring workflow (Analysis chat, script rewrite and TTS), not by this Provider's requests |
+| `referenceUpload` | `gateway` (default): `POST /files` on this Endpoint. `s3`: presigned POST to the OSS/S3 bucket in `S3_*` env, then pass the `S3_CDN` URL to the model |
 
 Image generation supports text-to-image for common `1K` and some `2K` aspect ratios.
 When a request includes reference images, the Provider uploads them through `POST /files`
 and submits `POST /images/edits` with `reference_images` URLs (override with `routes.imageEdits`).
+Set `referenceUpload` to `s3` when the gateway has no usable `/files` route (MiniMax H3 is the usual case).
+That path uses the same env names as an Aliyun OSS public-read upload (`S3_ENDPOINT`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `S3_REGION`, `S3_CDN`). The model then fetches
+`{S3_CDN}/hypit/references/...` instead of a gateway file URL.

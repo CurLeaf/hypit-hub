@@ -6,3 +6,4 @@ export {
   OpenAiCompatibleClient,
 } from "./client.js";
 export type { OpenAiCompatibleProviderOptions, OpenAiCompatibleRoutes } from "./client.js";
+export type { S3PublicUploadConfig } from "./s3-public-upload.js";

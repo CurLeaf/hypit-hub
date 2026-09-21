@@ -15,7 +15,7 @@ export function writeAnalysisHelp(io: Pick<CliIo, "write">): void {
   hypit analysis [--video <path.mp4>] [--workspace <directory>]
     [--runtime <hypit.runtime.json>] [--port <number>] [--language zh|en|es]
 
-打开命令打印的网址。上传或指定本地视频后，点击「开始分析」。
+打开命令打印的网址。上传、使用默认 origin 视频、或指定本地视频后，点击「开始分析」。
 分析结果保存在项目的 .hypit/analysis/ 目录（ANALYSIS.json、transcript.json、overview-tile.jpg）。
 
 需要 Runtime 已选择且 runtime up，才能转写对白（WhisperX）。
@@ -69,6 +69,8 @@ export async function runAnalysis(argv: readonly string[], io: Pick<CliIo, "writ
     cwd: invokedFrom,
   });
   const { loadWorkspaceEnv } = await import("./src/workspace-env.js");
+  const distributionRoot = resolve(here, "../..");
+  await loadWorkspaceEnv(distributionRoot);
   await loadWorkspaceEnv(workspaceRoot);
   const runtimeArgument = values.get("runtime")?.at(-1);
   const selectedRuntime = runtimeArgument === undefined ? await findRuntimeProfile(workspaceRoot) : undefined;
@@ -84,7 +86,6 @@ export async function runAnalysis(argv: readonly string[], io: Pick<CliIo, "writ
       ? resolve(workspaceRoot, videoArgument)
       : resolve(invokedFrom, videoArgument);
 
-  const distributionRoot = resolve(here, "../..");
   // A checkout of this repository carries its own workspace manifest; an installed Distribution
   // does not. Only a checkout can pick up an edited source file, so only there is the watching
   // command worth printing.

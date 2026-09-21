@@ -146,8 +146,16 @@ export async function exportBuildVideo(workspaceRoot: string, buildId: string, d
   return destination;
 }
 
-export async function ensureRuntimeUp(workspaceRoot: string, runtimePath?: string): Promise<void> {
-  const args = ["runtime", "up", ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
+export async function ensureRuntimeUp(
+  workspaceRoot: string,
+  runtimePath?: string,
+  endpoints: readonly string[] = [],
+): Promise<void> {
+  const args = [
+    "runtime", "up",
+    ...(runtimePath === undefined ? [] : ["--runtime", runtimePath]),
+    ...endpoints.flatMap((endpoint) => ["--endpoint", endpoint]),
+  ];
   await runHypit(args, workspaceRoot);
 }
 

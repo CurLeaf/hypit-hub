@@ -52,6 +52,7 @@
         "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
         "defaultConcurrency": 2,
         "videoAdapter": "openai-videos",
+        "referenceUpload": "s3",
         "models": {
           "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
         },

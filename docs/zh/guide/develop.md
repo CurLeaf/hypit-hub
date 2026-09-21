@@ -58,6 +58,9 @@ Analysis UI 会把工作区 `.env` 注入自己启动的 CLI 子进程，所以�
 提供：样式原地替换，界面代码改动后浏览器自动刷新。分析、工作流与 Build 状态保存在服务端，刷新或
 重启后会从 `.hypit/` 恢复；但进程停止时仍在运行的任务不会继续。
 
+`pnpm upload:origin` 会把仓库根目录的 `origin.mp4` 传到 `{S3_CDN}/hypit/default/origin.mp4`，并写入
+`HYPIT_DEFAULT_VIDEO_URL`。Analysis 侧栏的「使用默认视频」会直接用这个 origin URL（转写仍会在本地缓存一份）。
+
 ## 仓库结构
 
 ```text

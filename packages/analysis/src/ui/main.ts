@@ -22,6 +22,7 @@ let replicateNotes = "";
 const speechMode: "tts" = "tts";
 let videoAroll = true;
 let formatOverride = "";
+let defaultVideoLoading = false;
 let referenceUploading = false;
 let referenceUploadError: string | undefined;
 let officialPathChecks: readonly OfficialPathCheckView[] | undefined;
@@ -127,6 +128,9 @@ function summarizeBuildFailure(raw: string): string {
   }
   if (/ECONNREFUSED|fetch failed|无法连接/iu.test(text)) {
     return `无法连接 Runtime 或网关${sceneHint}。请先运行 hypit runtime up。`;
+  }
+  if (/场景 prompt 生成不完整/u.test(text)) {
+    return "场景画面提示词生成不完整。通常是模型把段落键写成 scene-1，而工程需要 segment-1。请再试一次一键复刻。";
   }
   if (sceneMatch !== null) return `生成场景图 ${sceneMatch[1]} 失败，请查看下方完整错误。`;
   return "视频生成失败，请查看下方完整错误信息。";
@@ -306,6 +310,20 @@ function renderSidebar(): HTMLElement {
   sidebar.append(steps);
 
   sidebar.append(el("div", "panel-title", "导入视频"));
+  const defaultField = el("div", "field");
+  const defaultBtn = el("button", "btn", defaultVideoLoading ? "正在载入默认视频…" : "使用默认视频") as HTMLButtonElement;
+  const defaultVideoUrl = config?.defaultVideoUrl;
+  defaultBtn.disabled = defaultVideoUrl === undefined || defaultVideoLoading || session.job?.status === "running";
+  defaultBtn.addEventListener("click", () => void useDefaultVideo());
+  defaultField.append(el("label", undefined, "默认 origin 视频"), defaultBtn);
+  if (defaultVideoUrl !== undefined) {
+    defaultField.append(el("p", "uploaded-name", config?.defaultVideoName ?? "origin.mp4"));
+    defaultField.append(el("p", "default-video-url", defaultVideoUrl));
+  } else {
+    defaultField.append(el("p", "uploaded-name", "未配置。请先运行 pnpm upload:origin"));
+  }
+  sidebar.append(defaultField);
+
   const uploadField = el("div", "field");
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -315,7 +333,12 @@ function renderSidebar(): HTMLElement {
     if (file !== undefined) void uploadFile(file);
   });
   uploadField.append(el("label", undefined, "上传文件"), fileInput);
-  if (session.videoName !== undefined) uploadField.append(el("p", "uploaded-name", `已导入：${session.videoName}`));
+  if (session.videoName !== undefined) {
+    uploadField.append(el("p", "uploaded-name", `已导入：${session.videoName}`));
+  }
+  if (session.videoUrl !== undefined) {
+    uploadField.append(el("p", "default-video-url", session.videoUrl));
+  }
   sidebar.append(uploadField);
 
   const langField = el("div", "field");
@@ -380,8 +403,10 @@ function renderCenter(): HTMLElement {
   const shell = el("div", "player-shell");
 
   const hasOutput = session.build?.outputVideoPath !== undefined;
-  const videoPath = previewMode === "output" && hasOutput ? session.build?.outputVideoPath : session.videoPath;
-  const url = mediaUrl(videoPath);
+  const showingOutput = previewMode === "output" && hasOutput;
+  const url = showingOutput
+    ? mediaUrl(session.build?.outputVideoPath)
+    : (session.videoUrl ?? mediaUrl(session.videoPath));
 
   if (hasOutput) {
     const toggle = el("div", "preview-toggle");
@@ -400,6 +425,14 @@ function renderCenter(): HTMLElement {
     video.src = url;
     video.controls = true;
     video.playsInline = true;
+    if (!showingOutput && session.videoUrl !== undefined) {
+      video.addEventListener("error", () => {
+        const fallback = mediaUrl(session.videoPath);
+        if (fallback === undefined || video.dataset.localFallback === "1") return;
+        video.dataset.localFallback = "1";
+        video.src = fallback;
+      });
+    }
     video.addEventListener("timeupdate", () => { currentTime = video.currentTime; highlightActiveWord(); });
     shell.append(video);
   }
@@ -1146,6 +1179,21 @@ async function uploadFile(file: File): Promise<void> {
     session = { ...session, job: { id: "upload", status: "complete" } };
   } catch (error) {
     session = { ...session, job: { id: "upload", status: "error", error: error instanceof Error ? error.message : String(error) } };
+  }
+  render();
+}
+
+async function useDefaultVideo(): Promise<void> {
+  defaultVideoLoading = true;
+  render();
+  try {
+    session = await api<AnalysisSessionView>("/__analysis/use-default-video", { method: "POST" });
+    session = { ...session, job: { id: "upload", status: "complete" } };
+    previewMode = "reference";
+  } catch (error) {
+    session = { ...session, job: { id: "upload", status: "error", error: error instanceof Error ? error.message : String(error) } };
+  } finally {
+    defaultVideoLoading = false;
   }
   render();
 }

@@ -60,6 +60,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--line);
 }
 .btn:hover { border-color: var(--text-3); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--brand); border-color: transparent; color: white; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -117,7 +118,9 @@ a:hover { text-decoration: underline; }
 
 .field { padding: 0 12px 12px; display: grid; gap: 6px; }
 .field label { color: var(--text-2); font-size: 12px; }
+.sidebar .field .btn { width: 100%; }
 .field .uploaded-name { margin: 0; color: var(--text-1); font-size: 12px; word-break: break-all; }
+.field .default-video-url { margin: 0; color: var(--text-3); font-size: 11px; word-break: break-all; line-height: 1.35; }
 .field input, .field select {
   width: 100%;
   padding: 10px 12px;

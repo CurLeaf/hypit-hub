@@ -61,7 +61,7 @@ node bin/hypit.mjs build examples/byok-openai-compatible/minimax-video.svrun --w
 
 The Analysis UI (`hypit analysis`) supports the official adaptation path:
 
-1. Upload a **reference video** → analyze why it works (ANALYSIS / TIMELINE)
+1. Click **使用默认视频** (CDN `origin.mp4` after `pnpm upload:origin`) or upload a **reference video** → analyze why it works (ANALYSIS / TIMELINE)
 2. Upload a **reference image** (product or presenter) in the sidebar
 3. Fill **改编说明** with your product name, selling points, and audience
 4. Enable **MiniMax H3 口播** (default when a reference image is present)
@@ -99,7 +99,8 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 - **Text-to-image** uses `POST /images/generations` with `prompt`, `size`, and `model`.
 - **Image + reference** uploads media to `POST <baseUrl>/files`, then uses `POST /images/edits` with
   `reference_images`.
-- **MiniMax H3 ReferenceVideo** uses `POST /videos` with `reference_image_urls`, `reference_audios`, `prompt`, `seconds`, etc.
+- **MiniMax H3 ReferenceVideo** publishes the reference image and voice sample to the public OSS
+  bucket in `S3_*` (`referenceUpload: "s3"`), then `POST /videos` with those `S3_CDN` URLs.
 - **Other videos** use `POST /videos` and poll `GET /videos/{id}` by default.
 - If your gateway exposes async jobs at `/tasks/{id}`, set `videoAdapter` to `async-tasks` and
   adjust `routes.videoStatus` accordingly.
@@ -107,7 +108,9 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 
 ## Known limits
 
-- `gpt-image-2` reference edits and H3 ReferenceVideo both require the `POST <baseUrl>/files` upload on your gateway.
+- `gpt-image-2` reference edits still use `POST <baseUrl>/files` on `gateway.default`.
+- H3 ReferenceVideo does **not** use MiniMax `/files`. Set `referenceUpload` to `s3` and the same
+  `S3_*` env names as erp-admin-demo-1; MiniMax fetches `{S3_CDN}/hypit/references/…`.
 - H3 is bound as `@hypit/minimax-h3@1#minimax-h3` → `MiniMax-H3` on `gateway.minimax` (`H3_VIDEO_API_KEY`).
 - H3 clips are capped at 15 seconds per request; longer references are clamped in the replica scaffold.
 - Speech/TTS capabilities are not wired in this example Profile.

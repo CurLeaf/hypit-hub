@@ -62,6 +62,10 @@ page by itself. Analysis, Workflow and Build state lives on the server and is re
 `.hypit/` after a reload or restart, but work that was still running when the process stopped does
 not continue.
 
+`pnpm upload:origin` publishes the checkout's `origin.mp4` to `{S3_CDN}/hypit/default/origin.mp4`
+and writes `HYPIT_DEFAULT_VIDEO_URL`. The Analysis sidebar option **使用默认视频** uses that URL
+directly (ffmpeg/WhisperX still cache a local copy).
+
 ## Repository layout
 
 ```text

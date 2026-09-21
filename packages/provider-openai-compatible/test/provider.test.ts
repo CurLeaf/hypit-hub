@@ -230,6 +230,86 @@ test("OpenAI-compatible provider submits Seedance ReferenceVideo with uploaded i
   assert.deepEqual(calls, ["/v1/files", "/v1/files", "/v1/videos", "/v1/videos/video-ref", "/output.mp4"]);
 });
 
+test("OpenAI-compatible provider publishes reference media to S3/CDN instead of gateway /files", async () => {
+  const resources = new MemoryResourceStore();
+  const imageResource = await resources.put(new Uint8Array([1, 2, 3]), "image/png");
+  const audioResource = await resources.put(new Uint8Array([4, 5, 6]), "audio/wav");
+  const hosts: string[] = [];
+  const provider = createOpenAiCompatibleProvider({
+    instance: "gateway.minimax",
+    pool: "gateway.minimax",
+    baseUrl: "https://gateway.example/v1",
+    apiKey: { store: "env", key: "H3_VIDEO_API_KEY" },
+    models: { "@hypit/seedance@1#seedance-2-mini": "seedance-2-mini" },
+    pollIntervalMs: 0,
+    referenceUpload: {
+      endpoint: "https://oss.example/bucket",
+      accessKeyId: "id",
+      accessKeySecret: "secret",
+      bucketName: "bucket",
+      region: "cn-hangzhou",
+      cdnUrl: "https://cdn.example",
+      keyPrefix: "hypit/test",
+    },
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      hosts.push(url.hostname + url.pathname);
+      if (url.hostname === "oss.example") {
+        assert.equal(init?.method, "POST");
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname === "/v1/videos") {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        assert.match(String((body.reference_image_urls as string[])[0]), /^https:\/\/cdn\.example\/hypit\/test\/.+\.png$/u);
+        assert.match(String((body.reference_audios as string[])[0]), /^https:\/\/cdn\.example\/hypit\/test\/.+\.wav$/u);
+        return Response.json({ id: "video-s3", status: "completed", output_url: "https://assets.example/output.mp4" });
+      }
+      if (url.pathname === "/v1/videos/video-s3") {
+        return Response.json({ id: "video-s3", status: "completed", output_url: "https://assets.example/output.mp4" });
+      }
+      if (url.hostname === "assets.example") {
+        return new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } });
+      }
+      throw new Error(`Unexpected path ${url.href}`);
+    },
+  });
+  const need = {
+    id: "need:s3-ref",
+    capability: { module: { name: "@hypit/seedance", version: "1" }, name: "seedance-2-mini" },
+    returns: generationTypes.videoSet,
+    constraints: canonicalize(sealSeedanceRequest("seedance-2-mini", {
+      prompt: ["Presenter explains the product"],
+      aspectRatio: ["9:16"],
+      resolution: ["720p"],
+      duration: [6],
+      generateAudio: [true],
+      webSearch: [false],
+      referenceImage: [{ role: "image", artifact: imageResource }],
+      referenceAudio: [{ role: "audio", artifact: audioResource }],
+    })),
+    result: "record:s3-ref",
+  } as const;
+  const registry = new EndpointRegistry();
+  await provider.install(registry);
+  const resolution = registry.resolve(need);
+  assert.equal(resolution.status, "resolved");
+  assert.equal(resolution.registration.kind, "asynchronous");
+  const endpoint = resolution.registration.endpoint;
+  const context = {
+    need,
+    command: { kind: "fulfill-need" as const, id: "command:s3-ref", need },
+    operation: "operation:s3-ref",
+    resources,
+    credentials: { apiKey: { secret: "test-key" } },
+    checkpoint: async () => {},
+  };
+  const start = await endpoint.start(context);
+  assert.equal(start.status, "ready");
+  await endpoint.collect!({ ...context, handle: start.handle });
+  assert.ok(!hosts.some((host) => host.includes("/files")));
+  assert.deepEqual(hosts.slice(0, 3), ["oss.example/bucket", "oss.example/bucket", "gateway.example/v1/videos"]);
+});
+
 test("OpenAI-compatible provider polls async video jobs", async () => {
   const resources = new MemoryResourceStore();
   let pollCount = 0;

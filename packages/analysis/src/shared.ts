@@ -126,6 +126,7 @@ export type AnalysisSessionView = {
   readonly runtimeProfile?: string;
   readonly videoPath?: string;
   readonly videoName?: string;
+  readonly videoUrl?: string;
   readonly productReferencePath?: string;
   readonly productReferenceName?: string;
   readonly videoAroll?: boolean;
@@ -175,6 +176,8 @@ export type AnalysisConfigView = {
   readonly ttsVoice?: string;
   readonly hasChatApiKey?: boolean;
   readonly hasH3ApiKey?: boolean;
+  readonly defaultVideoUrl?: string;
+  readonly defaultVideoName?: string;
 };
 
 export function formatTime(seconds: number): string {

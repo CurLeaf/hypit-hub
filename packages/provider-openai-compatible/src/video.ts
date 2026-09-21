@@ -11,7 +11,7 @@ import type { BlobRef } from "@hypit/protocol";
 
 import type { OpenAiCompatibleClient } from "./client.js";
 import { mappingForCapability } from "./mappings.js";
-import { uploadArtifactUrl } from "./upload.js";
+import type { ResolveArtifactUrl } from "./upload.js";
 
 type VideoHandle = {
   readonly contract: "hypit.openai-compatible-video@1";
@@ -75,13 +75,14 @@ export function createVideoEndpoint(
     readonly pollIntervalMs: number;
     readonly operationTimeoutMs: number;
     readonly modelFor: (request: EndpointRequest) => string;
+    readonly resolveArtifactUrl: ResolveArtifactUrl;
   },
 ): AsyncEndpoint {
   const resolveArtifact = async (
     artifact: BlobRef,
     resources: EndpointStartContext["resources"],
     secret: string,
-  ): Promise<string> => await uploadArtifactUrl(client, secret, artifact, resources);
+  ): Promise<string> => await options.resolveArtifactUrl(artifact, resources, secret);
 
   return {
     async start(context: EndpointStartContext) {
