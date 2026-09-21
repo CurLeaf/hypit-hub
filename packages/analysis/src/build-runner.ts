@@ -162,9 +162,10 @@ export async function ensureRuntimeUp(
 export async function runCheck(
   workspaceRoot: string,
   runPath: string,
-  runtimePath?: string,
+  _runtimePath?: string,
 ): Promise<{ readonly ok: boolean; readonly summary: string; readonly raw: unknown }> {
-  const args = ["check", runPath, ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
+  // `hypit check` is a local Author/Run static check; `--runtime` is rejected.
+  const args = ["check", runPath];
   const raw = parseJsonStdout(await runHypit(args, workspaceRoot)) as {
     ok?: boolean;
     title?: string;

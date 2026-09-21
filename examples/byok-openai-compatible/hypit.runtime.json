@@ -26,7 +26,7 @@
     "gateway.default": {
       "use": "@hypit/provider-openai-compatible",
       "config": {
-        "baseUrl": "https://ai-api.qzsyzn.com/v1",
+        "baseUrl": { "store": "env", "key": "OPENAI_BASE_URL" },
         "apiKey": { "store": "env", "key": "OPENAI_API_KEY" },
         "chatModel": "deepseek-v4-flash",
         "ttsModel": "FunAudioLLM/CosyVoice2-0.5B",
@@ -48,20 +48,13 @@
     "gateway.minimax": {
       "use": "@hypit/provider-openai-compatible",
       "config": {
-        "baseUrl": "https://metaso.cn/api/minimax",
+        "baseUrl": { "store": "env", "key": "H3_VIDEO_BASE_URL" },
         "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
         "defaultConcurrency": 2,
-        "videoAdapter": "openai-videos",
+        "videoAdapter": "minimax-v2",
         "referenceUpload": "s3",
         "models": {
           "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
-        },
-        "routes": {
-          "image": "/images/generations",
-          "imageEdits": "/images/edits",
-          "speech": "/audio/speech",
-          "videoSubmit": "/videos",
-          "videoStatus": "/videos/{id}"
         }
       }
     }

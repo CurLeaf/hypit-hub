@@ -10,7 +10,7 @@ Runtime Profile.
 | --- | --- | --- |
 | `@hypit/gpt-image@1#gpt-image-2` | `POST /images/generations` | immediate |
 | `@hypit/seedance@1#seedance-2*` | `POST /videos` + poll | asynchronous |
-| `@hypit/minimax-h3@1#minimax-h3` | `POST /videos` + poll | asynchronous |
+| `@hypit/minimax-h3@1#minimax-h3` | `POST /v2/video_generation` + poll (`minimax-v2`) | asynchronous |
 
 An Endpoint offers exactly the capabilities its `models` map names, and nothing else, so two gateways
 in one Profile no longer both look like they serve this whole catalog. Add a mapping to compare video
@@ -28,7 +28,7 @@ separately in the same Profile.
     "gateway.default": {
       "use": "@hypit/provider-openai-compatible",
       "config": {
-        "baseUrl": "https://api.openai.com/v1",
+        "baseUrl": { "store": "env", "key": "OPENAI_BASE_URL" },
         "apiKey": { "store": "env", "key": "OPENAI_API_KEY" },
         "models": {
           "@hypit/gpt-image@1#gpt-image-2": "gpt-image-2",
@@ -40,9 +40,10 @@ separately in the same Profile.
     "gateway.minimax": {
       "use": "@hypit/provider-openai-compatible",
       "config": {
-        "baseUrl": "https://api.minimax.chat/v1",
+        "baseUrl": { "store": "env", "key": "H3_VIDEO_BASE_URL" },
         "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
         "referenceUpload": "s3",
+        "videoAdapter": "minimax-v2",
         "models": {
           "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
         }
@@ -60,11 +61,11 @@ separately in the same Profile.
 
 | Field | Meaning |
 | --- | --- |
-| `baseUrl` | Gateway root, usually ending in `/v1` |
+| `baseUrl` | Gateway root. A string, `$NAME` / `${NAME}`, or `{ "store": "env", "key": "NAME" }` (for example `H3_VIDEO_BASE_URL`) |
 | `apiKey` | Credential Store reference |
 | `models` | Full capability name → remote model id |
 | `routes` | Optional path overrides for `image`, `imageEdits`, `speech`, `videoSubmit`, `videoStatus` |
-| `videoAdapter` | `openai-videos` (default) or `async-tasks` for `/tasks/{id}` polling |
+| `videoAdapter` | `openai-videos` (default), `async-tasks` for `/tasks/{id}` polling, or `minimax-v2` for MiniMax `POST /v2/video_generation` |
 | `defaultConcurrency` | Shared request capacity |
 | `pollIntervalMs` | Async video poll interval |
 | `operationTimeoutMs` | Async video timeout |

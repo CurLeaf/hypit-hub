@@ -2,6 +2,15 @@ import type { CredentialRef } from "@hypit/endpoint-kit";
 
 import type { S3PublicUploadConfig } from "./s3-public-upload.js";
 
+export const VIDEO_ADAPTERS = ["openai-videos", "async-tasks", "minimax-v2"] as const;
+export type VideoAdapter = (typeof VIDEO_ADAPTERS)[number];
+
+export function parseVideoAdapter(value: string | undefined): VideoAdapter {
+  if (value === undefined) return "openai-videos";
+  if ((VIDEO_ADAPTERS as readonly string[]).includes(value)) return value as VideoAdapter;
+  throw new Error("OpenAI-compatible videoAdapter must be openai-videos, async-tasks, or minimax-v2");
+}
+
 export type OpenAiCompatibleRoutes = {
   readonly image: string;
   readonly imageEdits: string;
@@ -99,7 +108,7 @@ export type OpenAiCompatibleProviderOptions = {
   readonly apiKey: CredentialRef;
   readonly models: Readonly<Record<string, string>>;
   readonly routes?: Partial<OpenAiCompatibleRoutes>;
-  readonly videoAdapter?: "openai-videos" | "async-tasks";
+  readonly videoAdapter?: VideoAdapter;
   readonly defaultConcurrency?: number;
   readonly pollIntervalMs?: number;
   readonly operationTimeoutMs?: number;

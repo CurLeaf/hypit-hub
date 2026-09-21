@@ -4,6 +4,7 @@ import type {
   OfficialPathCheckView,
 } from "../shared.js";
 import { formatTime } from "../shared.js";
+import { isCliCheckInvocationError } from "../scaffold-check.js";
 
 type TabId = "overview" | "timeline" | "insight" | "brief" | "transcript" | "structure" | "create" | "result";
 
@@ -114,6 +115,9 @@ function summarizeBuildFailure(raw: string): string {
   if (/HTTP 500|unexpected EOF|read_response_body_failed/iu.test(text)) {
     return `图片生成 API 网关异常${sceneHint}。通常是中转服务不稳定或模型不可用，请稍后重试或检查 gateway 配置。`;
   }
+  if (/\/videos returned HTTP 404|path":"\/api\/minimax\/videos"/iu.test(text)) {
+    return "视频接口 404：请求打到了网关不存在的 POST /videos。MiniMax H3 应走 V2 `/v2/video_generation`。这不是图片模型映射问题。";
+  }
   if (/HTTP 404|not found for API|NOT_FOUND/iu.test(text)) {
     return `图片模型未找到或网关不支持该模型${sceneHint}。请检查 hypit.runtime.json 的 models 映射与 baseUrl。`;
   }
@@ -128,6 +132,9 @@ function summarizeBuildFailure(raw: string): string {
   }
   if (/ECONNREFUSED|fetch failed|无法连接/iu.test(text)) {
     return `无法连接 Runtime 或网关${sceneHint}。请先运行 hypit runtime up。`;
+  }
+  if (/cannot resolve product-reference/iu.test(text)) {
+    return "参考图引用无法解析。本地 asset:Image 发布的是 product-reference，不是 product-reference.image。";
   }
   if (/场景 prompt 生成不完整/u.test(text)) {
     return "场景画面提示词生成不完整。通常是模型把段落键写成 scene-1，而工程需要 segment-1。请再试一次一键复刻。";
@@ -1043,9 +1050,13 @@ function renderCreate(): HTMLElement {
     el("p", undefined, `目录：${session.scaffold.productionDir}`),
     el("p", undefined, `Run：${session.scaffold.runPath}`),
   );
-  if (session.scaffold.checkOk === false) {
+  if (session.scaffold.checkOk === false && !isCliCheckInvocationError(session.scaffold.checkSummary)) {
     card.append(el("div", "status error", `工程校验：${session.scaffold.checkSummary ?? "未通过"}`));
-  } else if (session.scaffold.checkSummary !== undefined && session.scaffold.checkSummary.length > 0) {
+  } else if (
+    session.scaffold.checkSummary !== undefined
+    && session.scaffold.checkSummary.length > 0
+    && !isCliCheckInvocationError(session.scaffold.checkSummary)
+  ) {
     card.append(el("p", "build-meta", `校验：${session.scaffold.checkSummary.split("\n")[0]}`));
   }
   wrap.append(card);
@@ -1238,8 +1249,7 @@ async function ensureReplicationReady(forBuild = false): Promise<boolean> {
     `/__analysis/readiness${forBuild ? "?forBuild=1" : ""}`,
   );
   if (!readiness.ok) {
-    completionNotice = readiness.issues.join("\n");
-    activeTab = "create";
+    showBuildFailure(readiness.issues.join("\n"));
     render();
     return false;
   }
@@ -1267,7 +1277,19 @@ async function uploadReferenceFile(file: File, input?: HTMLInputElement): Promis
 
 async function runBuild(): Promise<void> {
   clearCompletionNotice();
-  if (!(await ensureReplicationReady(true))) return;
+  const previousBuild = session.build;
+  const previousJob = session.workflowJob;
+  session = {
+    ...session,
+    build: { status: "planning", phase: "检查生成条件…" },
+    workflowJob: { id: "build", status: "running", phase: "检查生成条件…" },
+  };
+  render();
+  if (!(await ensureReplicationReady(true))) {
+    session = { ...session, build: previousBuild, workflowJob: previousJob };
+    render();
+    return;
+  }
   try {
     if (applySessionUpdate(await api<AnalysisSessionView>("/__analysis/build", {
       method: "POST",

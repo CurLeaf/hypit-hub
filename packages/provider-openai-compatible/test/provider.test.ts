@@ -379,6 +379,104 @@ test("OpenAI-compatible provider polls async video jobs", async () => {
   assert.equal(videos[0]?.mediaType, "video/mp4");
 });
 
+test("OpenAI-compatible provider submits MiniMax H3 through V2 video_generation", async () => {
+  const resources = new MemoryResourceStore();
+  const imageResource = await resources.put(new Uint8Array([1, 2, 3]), "image/png");
+  const audioResource = await resources.put(new Uint8Array([4, 5, 6]), "audio/wav");
+  const calls: string[] = [];
+  const provider = createOpenAiCompatibleProvider({
+    instance: "gateway.minimax",
+    pool: "gateway.minimax",
+    baseUrl: "https://metaso.example/api/minimax",
+    apiKey: { store: "env", key: "H3_VIDEO_API_KEY" },
+    models: { "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3" },
+    videoAdapter: "openai-videos",
+    pollIntervalMs: 0,
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      calls.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/minimax/files") {
+        const index = calls.filter((path) => path.endsWith("/files")).length;
+        return Response.json({ url: `https://gateway.example/files/ref-${index}` });
+      }
+      if (url.pathname === "/api/minimax/videos" || url.pathname.startsWith("/api/minimax/videos/")) {
+        throw new Error("MiniMax H3 must not use the OpenAI /videos path");
+      }
+      if (url.pathname === "/api/minimax/v2/video_generation") {
+        assert.equal(init?.method, "POST");
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        assert.equal(body.model, "MiniMax-H3");
+        assert.equal(body.duration, 6);
+        assert.equal(body.resolution, "768P");
+        assert.equal(body.ratio, "9:16");
+        assert.deepEqual(body.content, [
+          { type: "text", text: "Presenter explains the product" },
+          { type: "image_url", role: "reference_image", image_url: { url: "https://gateway.example/files/ref-1" } },
+          { type: "audio_url", role: "reference_audio", audio_url: { url: "https://gateway.example/files/ref-2" } },
+        ]);
+        return Response.json({ task_id: "424010985738629" });
+      }
+      if (url.pathname === "/api/minimax/v2/query/video_generation/424010985738629") {
+        return Response.json({
+          task: {
+            id: "424010985738629",
+            status: "succeeded",
+            content: { url: "https://assets.example/output.mp4" },
+          },
+        });
+      }
+      if (url.hostname === "assets.example") {
+        return new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } });
+      }
+      throw new Error(`Unexpected path ${url.pathname}`);
+    },
+  });
+  const need = {
+    id: "need:h3-ref",
+    capability: { module: { name: "@hypit/minimax-h3", version: "1" }, name: "minimax-h3" },
+    returns: generationTypes.videoSet,
+    constraints: canonicalize({
+      ports: {
+        prompt: ["Presenter explains the product"],
+        duration: [6],
+        resolution: ["768P"],
+        aspectRatio: ["9:16"],
+        referenceImage: [{ role: "image", artifact: imageResource }],
+        referenceAudio: [{ role: "audio", artifact: audioResource }],
+      },
+    }),
+    result: "record:h3-ref",
+  } as const;
+  const registry = new EndpointRegistry();
+  await provider.install(registry);
+  const resolution = registry.resolve(need);
+  assert.equal(resolution.status, "resolved");
+  assert.equal(resolution.registration.kind, "asynchronous");
+  const endpoint = resolution.registration.endpoint;
+  const context = {
+    need,
+    command: { kind: "fulfill-need" as const, id: "command:h3-ref", need },
+    operation: "operation:h3-ref",
+    resources,
+    credentials: { apiKey: { secret: "test-key" } },
+    checkpoint: async () => {},
+  };
+  const start = await endpoint.start(context);
+  assert.equal(start.status, "pending");
+  const done = await endpoint.poll({ ...context, handle: start.handle });
+  assert.equal(done.status, "ready");
+  const collected = await endpoint.collect!({ ...context, handle: done.handle });
+  assert.equal(collected.status, "completed");
+  assert.deepEqual(calls, [
+    "POST /api/minimax/files",
+    "POST /api/minimax/files",
+    "POST /api/minimax/v2/video_generation",
+    "GET /api/minimax/v2/query/video_generation/424010985738629",
+    "GET /api/minimax/v2/query/video_generation/424010985738629",
+    "GET /output.mp4",
+  ]);
+});
+
 const gateway = {
   instance: "gateway.default",
   pool: "gateway.default",

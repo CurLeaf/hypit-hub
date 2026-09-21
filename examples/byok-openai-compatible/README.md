@@ -17,9 +17,10 @@ the machine. Image and video generation route through your own OpenAI-compatible
 cp .env.example .env
 ```
 
-2. Edit `hypit.runtime.json`:
+2. Set gateway addresses in `.env` (runtime.json reads them by env name):
 
-- Set `gateway.default.config.baseUrl` to your gateway, for example `https://api.openai.com/v1`
+- `OPENAI_BASE_URL` → `gateway.default` (chat, TTS, images), for example `https://api.openai.com/v1`
+- `H3_VIDEO_BASE_URL` → `gateway.minimax` (MiniMax H3 V2)
 - Map each capability in `models` to the model name your gateway expects
 
 3. Load keys for the Runtime Worker (PowerShell):
@@ -28,8 +29,8 @@ cp .env.example .env
 . ./load-env.ps1
 ```
 
-- `OPENAI_API_KEY` → `gateway.default` (images)
-- `H3_VIDEO_API_KEY` → `gateway.minimax` (MiniMax H3 video)
+- `OPENAI_BASE_URL` / `OPENAI_API_KEY` → `gateway.default` (chat, TTS, images)
+- `H3_VIDEO_BASE_URL` / `H3_VIDEO_API_KEY` → `gateway.minimax` (MiniMax H3 video)
 
 ## Verify
 
@@ -71,7 +72,8 @@ The Analysis UI (`hypit analysis`) supports the official adaptation path:
    - **A-roll**: `h3:ReferenceVideo` (reference image + TTS timbre sample + new dialogue)
    - **B-roll**: `gpt:Image` with `<gpt:Reference image={product-reference.image}/>`
 
-H3 uploads image/audio refs via `POST /files`, then `POST /videos` with `reference_image_urls` and `reference_audios`.
+H3 uploads image/audio refs to public OSS (`referenceUpload: "s3"`), then `POST /v2/video_generation`
+with MiniMax `content[]` (`text`, `image_url`, `audio_url`).
 B-roll image requests use `POST /images/edits`.
 
 See `templates/ugc-replica/README.md` for the generated project layout.
@@ -100,7 +102,9 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 - **Image + reference** uploads media to `POST <baseUrl>/files`, then uses `POST /images/edits` with
   `reference_images`.
 - **MiniMax H3 ReferenceVideo** publishes the reference image and voice sample to the public OSS
-  bucket in `S3_*` (`referenceUpload: "s3"`), then `POST /videos` with those `S3_CDN` URLs.
+  bucket in `S3_*` (`referenceUpload: "s3"`), then `POST /v2/video_generation` (`videoAdapter:
+  "minimax-v2"`) with those `S3_CDN` URLs in MiniMax `content[]`. `gateway.minimax.baseUrl` is
+  `H3_VIDEO_BASE_URL`.
 - **Other videos** use `POST /videos` and poll `GET /videos/{id}` by default.
 - If your gateway exposes async jobs at `/tasks/{id}`, set `videoAdapter` to `async-tasks` and
   adjust `routes.videoStatus` accordingly.
@@ -111,11 +115,12 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 - `gpt-image-2` reference edits still use `POST <baseUrl>/files` on `gateway.default`.
 - H3 ReferenceVideo does **not** use MiniMax `/files`. Set `referenceUpload` to `s3` and the same
   `S3_*` env names as erp-admin-demo-1; MiniMax fetches `{S3_CDN}/hypit/references/…`.
-- H3 is bound as `@hypit/minimax-h3@1#minimax-h3` → `MiniMax-H3` on `gateway.minimax` (`H3_VIDEO_API_KEY`).
+- H3 is bound as `@hypit/minimax-h3@1#minimax-h3` → `MiniMax-H3` on `gateway.minimax`
+  (`H3_VIDEO_API_KEY`, `H3_VIDEO_BASE_URL`).
 - H3 clips are capped at 15 seconds per request; longer references are clamped in the replica scaffold.
 - Speech/TTS capabilities are not wired in this example Profile.
-- Video payload shape follows OpenAI-style `videos` routes; custom gateways may need route or
-  adapter adjustments in `@hypit/provider-openai-compatible`.
+- H3 uses MiniMax V2 (`content[]` with `text` / `image_url` / `audio_url`). Other video models still
+  use OpenAI-style `/videos` unless their Endpoint sets a different `videoAdapter`.
 
 ## Comparing video models
 

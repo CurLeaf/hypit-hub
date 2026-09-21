@@ -19,6 +19,12 @@ export type OfficialPathReport = {
 
 const DEFAULT_SCENE_PROMPT_MARK = "Chinese product promo scene";
 
+function hasAdaptedVoice(svml: string): boolean {
+  return svml.includes("generated-speech")
+    || svml.includes('id="presenter-voice"')
+    || svml.includes('id="voice-reference"');
+}
+
 export function isDefaultScenePrompt(prompt: string): boolean {
   return prompt.includes(DEFAULT_SCENE_PROMPT_MARK)
     || prompt.startsWith("Vertical 9:16 short-form social video frame, cinematic lighting, clean composition.");
@@ -33,7 +39,7 @@ export async function loadOfficialGateway(
 
 export function assertOfficialLlmGateway(gateway: ChatGatewayConfig | undefined): ChatGatewayConfig {
   if (gateway === undefined) {
-    throw new Error("缺少 Runtime 网关（gateway.default）。请运行 hypit runtime use 并配置 hypit.runtime.json。");
+    throw new Error("缺少 Runtime 网关（gateway.default）。请配置 OPENAI_BASE_URL，并运行 hypit runtime use。");
   }
   const secret = process.env[gateway.apiKeyEnv]?.trim();
   if (secret === undefined || secret.length === 0) {
@@ -51,6 +57,10 @@ export function assertOfficialH3Credential(
   if (secret === undefined || secret.length === 0) {
     throw new Error("已启用 MiniMax H3 口播，但缺少 H3_VIDEO_API_KEY。请在 .env 配置后重启 analysis。");
   }
+  const baseUrl = process.env.H3_VIDEO_BASE_URL?.trim();
+  if (baseUrl === undefined || baseUrl.length === 0) {
+    throw new Error("已启用 MiniMax H3 口播，但缺少 H3_VIDEO_BASE_URL。请在 .env 配置后重启 analysis。");
+  }
 }
 
 export function validateOfficialSvml(
@@ -67,8 +77,10 @@ export function validateOfficialSvml(
     {
       id: "tts-audio",
       label: "TTS 改编配音",
-      ok: svml.includes("generated-speech") || !options.requireProductReference,
-      detail: "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
+      ok: hasAdaptedVoice(svml) || !options.requireProductReference,
+      detail: options.videoAroll
+        ? "H3 口播使用 TTS 音色样本（presenter-voice / voice-reference），不以参考片原声做口播轨"
+        : "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
     },
     {
       id: "h3-aroll",
@@ -85,8 +97,9 @@ export function validateOfficialSvml(
     {
       id: "gpt-reference",
       label: "B-roll 参考图 edits",
-      ok: svml.includes("<gpt:Reference image={product-reference.image}/>"),
-      detail: "分镜图应通过 gpt:Reference 传入产品参考图",
+      ok: svml.includes("<gpt:Reference image={product-reference")
+        || (options.videoAroll && svml.includes("<h3:Reference image={product-reference")),
+      detail: "分镜图或 H3 口播应通过 Reference 绑定产品参考图（asset:Image 发布裸 id）",
     },
     {
       id: "no-reference-audio",
@@ -118,7 +131,7 @@ export async function buildOfficialPathReport(input: {
     ok: llmOk,
     detail: llmOk
       ? `已配置 ${gateway!.apiKeyEnv} → ${gateway!.model}`
-      : "请配置 OPENAI_API_KEY 与 HYPIT_CHAT_MODEL（或 runtime gateway.default.chatModel）",
+      : "请配置 OPENAI_BASE_URL、OPENAI_API_KEY 与 HYPIT_CHAT_MODEL",
   });
 
   const ttsOk = llmOk;
@@ -131,13 +144,15 @@ export async function buildOfficialPathReport(input: {
       : "TTS 与对话模型共用 gateway.default 密钥",
   });
 
-  const h3Ok = !videoAroll || (process.env.H3_VIDEO_API_KEY?.trim().length ?? 0) > 0;
+  const h3Ok = !videoAroll
+    || ((process.env.H3_VIDEO_API_KEY?.trim().length ?? 0) > 0
+      && (process.env.H3_VIDEO_BASE_URL?.trim().length ?? 0) > 0);
   checks.push({
     id: "h3",
     label: "MiniMax H3 口播",
     ok: h3Ok,
     detail: videoAroll
-      ? (h3Ok ? "已配置 H3_VIDEO_API_KEY" : "启用 H3 口播需要 H3_VIDEO_API_KEY")
+      ? (h3Ok ? "已配置 H3_VIDEO_API_KEY 与 H3_VIDEO_BASE_URL" : "启用 H3 口播需要 H3_VIDEO_API_KEY 与 H3_VIDEO_BASE_URL")
       : "未启用 H3（仅静态分镜 + TTS）",
   });
 

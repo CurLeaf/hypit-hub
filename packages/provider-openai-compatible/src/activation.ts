@@ -8,8 +8,10 @@ import {
 } from "@hypit/runtime-kit";
 import type { CanonicalValue } from "@hypit/protocol";
 
-import { defaultOpenAiCompatibleRoutes, normalizeBaseUrl } from "./client.js";
+import { defaultOpenAiCompatibleRoutes, normalizeBaseUrl, parseVideoAdapter } from "./client.js";
+import { applyVideoAdapterRoutes } from "./minimax-v2.js";
 import { createOpenAiCompatibleProvider } from "./provider.js";
+import { resolveRuntimeText } from "./runtime-text.js";
 import { s3PublicUploadConfigFromEnv } from "./s3-public-upload.js";
 
 function modelMap(config: Record<string, CanonicalValue>): Readonly<Record<string, string>> {
@@ -63,7 +65,7 @@ const adapter = createRuntimeEndpointAdapterFacet({
       "ttsVoice",
       "referenceUpload",
     ], "OpenAI-compatible");
-    const baseUrl = runtimeConfigString(config.baseUrl, "OpenAI-compatible baseUrl");
+    const baseUrl = resolveRuntimeText(config.baseUrl, "OpenAI-compatible baseUrl");
     runtimeConfigString(config.chatModel, "OpenAI-compatible chatModel");
     runtimeConfigString(config.ttsModel, "OpenAI-compatible ttsModel");
     runtimeConfigString(config.ttsVoice, "OpenAI-compatible ttsVoice");
@@ -83,11 +85,11 @@ const adapter = createRuntimeEndpointAdapterFacet({
     for (const key of Object.keys(models)) {
       if (!key.includes("#")) throw new Error(`OpenAI-compatible model key ${key} must be a full capability name`);
     }
-    const routes = { ...defaultOpenAiCompatibleRoutes, ...routeMap(config) };
-    const videoAdapter = runtimeConfigString(config.videoAdapter, "OpenAI-compatible videoAdapter");
-    if (videoAdapter !== undefined && videoAdapter !== "openai-videos" && videoAdapter !== "async-tasks") {
-      throw new Error("OpenAI-compatible videoAdapter must be openai-videos or async-tasks");
-    }
+    const videoAdapter = parseVideoAdapter(runtimeConfigString(config.videoAdapter, "OpenAI-compatible videoAdapter"));
+    const routes = applyVideoAdapterRoutes(
+      videoAdapter,
+      { ...defaultOpenAiCompatibleRoutes, ...routeMap(config) },
+    );
     const defaultConcurrency = runtimeConfigPositiveInteger(config.defaultConcurrency, "OpenAI-compatible defaultConcurrency");
     const pollIntervalMs = runtimeConfigPositiveInteger(config.pollIntervalMs, "OpenAI-compatible pollIntervalMs");
     const operationTimeoutMs = runtimeConfigPositiveInteger(config.operationTimeoutMs, "OpenAI-compatible operationTimeoutMs");
@@ -100,7 +102,7 @@ const adapter = createRuntimeEndpointAdapterFacet({
         apiKey,
         models,
         routes,
-        ...(videoAdapter === undefined ? {} : { videoAdapter }),
+        videoAdapter,
         ...(defaultConcurrency === undefined ? {} : { defaultConcurrency }),
         ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
         ...(operationTimeoutMs === undefined ? {} : { operationTimeoutMs }),

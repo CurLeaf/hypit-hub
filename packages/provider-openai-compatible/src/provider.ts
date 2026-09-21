@@ -4,10 +4,13 @@ import { generationTypes } from "@hypit/generation";
 
 import {
   capabilityKey,
+  defaultOpenAiCompatibleRoutes,
   OpenAiCompatibleClient,
   type OpenAiCompatibleProviderOptions,
+  type VideoAdapter,
 } from "./client.js";
 import { mappingForCapability, openAiCompatibleMappings } from "./mappings.js";
+import { applyVideoAdapterRoutes } from "./minimax-v2.js";
 import { createImageHandler, gptImage2Returns, imageSupport } from "./image.js";
 import { createArtifactUrlResolver } from "./upload.js";
 import { createVideoEndpoint, videoSupport } from "./video.js";
@@ -31,17 +34,32 @@ function declaredMappings(models: Readonly<Record<string, string>>) {
   });
 }
 
+function defaultVideoAdapter(
+  models: Readonly<Record<string, string>>,
+  configured: VideoAdapter | undefined,
+): VideoAdapter {
+  if (configured !== undefined) return configured;
+  const keys = Object.keys(models);
+  if (keys.some((key) => key.includes("minimax-h3")) && !keys.some((key) => key.includes("seedance"))) {
+    return "minimax-v2";
+  }
+  return "openai-videos";
+}
+
 export function createOpenAiCompatibleProvider(options: OpenAiCompatibleProviderOptions) {
   const declared = declaredMappings(options.models);
+  const videoAdapter = defaultVideoAdapter(options.models, options.videoAdapter);
   const client = new OpenAiCompatibleClient({
     baseUrl: options.baseUrl,
-    ...(options.routes === undefined ? {} : { routes: options.routes }),
+    routes: applyVideoAdapterRoutes(videoAdapter, {
+      ...defaultOpenAiCompatibleRoutes,
+      ...options.routes,
+    }),
     ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const operationTimeoutMs = options.operationTimeoutMs ?? 20 * 60_000;
-  const videoAdapter = options.videoAdapter ?? "openai-videos";
   const modelFor = (request: EndpointRequest): string => {
     const mapped = options.models[capabilityKey(request.capability)];
     if (mapped === undefined) {
