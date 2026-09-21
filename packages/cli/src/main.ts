@@ -114,9 +114,12 @@ export async function runCli(
     });
   };
   if (args.command === "_worker") {
+    const packageRoot = args.packageRoot ?? await packageRootForProject();
+    const { loadWorkspaceEnv } = await import("@hypit/credential-store-env");
+    await loadWorkspaceEnv(packageRoot);
     await (await runtimeHost(
       args.profile,
-      args.packageRoot ?? await packageRootForProject(),
+      packageRoot,
     )).runWorker(args.readyFile, args.workerOwner,
       args.executionRoot === undefined ? undefined : { dataRoot: args.executionRoot });
     return;

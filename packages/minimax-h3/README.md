@@ -19,3 +19,5 @@ selected in the Runtime Profile.
 The Surface makes every prompt/media dependency an explicit graph edge and leaves execution to a Provider.
 `FrameVideo` accepts a first frame, a last frame, or both; either frame is an ordinary image Artifact edge.
 `ReferenceVideo` requires both a reference image and reference audio.
+
+Prompt Kits for recurring H3 semantics live in [`@hypit/minimax-h3-kits`](../minimax-h3-kits/README.md).

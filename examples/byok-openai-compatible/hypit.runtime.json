@@ -21,7 +21,7 @@
     },
     "hyperframes.local": {
       "use": "@hypit/provider-hyperframes-local",
-      "config": { "workers": 2, "defaultConcurrency": 1 }
+      "config": { "workers": 1, "defaultConcurrency": 1, "browserGpu": "software" }
     },
     "gateway.default": {
       "use": "@hypit/provider-openai-compatible",

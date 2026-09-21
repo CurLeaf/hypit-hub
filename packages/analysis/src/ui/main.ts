@@ -353,8 +353,8 @@ function renderSidebar(): HTMLElement {
   const stepData = [
     { title: "1. 参考片分析", detail: "转写、切镜检测、深读归档", done: analysisComplete },
     { title: "2. 爆款解读", detail: "Insight（分析时自动生成）", done: session.insight !== undefined },
-    { title: "3. 导演审查", detail: "Cursor Agent 审 BRIEF / 口播 / 切点", done: session.directorReview?.status === "approved" },
-    { title: "4. 参考图与改编配音", detail: "产品图 + TTS + H3 音色样本", done: session.productReferencePath !== undefined && session.adaptation?.status === "complete" },
+    { title: "3. 导演审查", detail: "在 Cursor 中让 Agent 审 BRIEF / 口播 / 切点", done: session.directorReview?.status === "approved" },
+    { title: "4. 参考图与改编配音", detail: "产品图 + TTS 试听/音色样本（成片口播由 H3 生成）", done: session.productReferencePath !== undefined && session.adaptation?.status === "complete" },
     { title: "5. Brief / Treatment", detail: "导演稿或改编时生成", done: session.brief !== undefined && session.treatment !== undefined },
     { title: "6. 生成工程", detail: "一键复刻 → SVML + hypit check", done: session.scaffold !== undefined },
     { title: "7. Plan / Pricing", detail: "确认费用范围", done: session.build?.planSummary !== undefined },
@@ -860,7 +860,7 @@ function renderReferenceField(): HTMLElement {
 
 function renderDirectorReviewField(): HTMLElement {
   const field = el("div", "field");
-  field.append(el("label", undefined, "导演审查（Cursor Agent，必填）"));
+  field.append(el("label", undefined, "导演审查（Cursor 对话，必填）"));
   if (session.productReferencePath === undefined || session.analysisPath === undefined) {
     field.append(el("p", undefined, "上传参考图并完成分析后，将生成 .hypit/analysis/director/ 审查稿。"));
     return field;
@@ -875,7 +875,7 @@ function renderDirectorReviewField(): HTMLElement {
     return field;
   }
   field.append(el("div", "status running", review?.phase ?? "等待导演审查"));
-  field.append(el("p", undefined, "在 Cursor 中打开 .hypit/analysis/director/，编辑 BRIEF.md、TREATMENT.md、scenes.json 后点击下方按钮。"));
+  field.append(el("p", undefined, "在 Cursor 对话中让 Agent 编辑 .hypit/analysis/director/ 下的 BRIEF.md、TREATMENT.md、scenes.json，确认口播无误后点击下方按钮。"));
   if (review?.dir !== undefined) {
     field.append(el("p", "uploaded-name", review.dir));
   }
@@ -1031,6 +1031,8 @@ function renderGenerationInputs(): HTMLElement {
   notesInput.value = replicateNotes;
   notesInput.addEventListener("input", () => {
     replicateNotes = notesInput.value;
+  });
+  notesInput.addEventListener("blur", () => {
     void persistAdaptationGoal(replicateNotes);
   });
   notesField.append(el("label", undefined, "改编说明"), notesInput);
@@ -1039,7 +1041,7 @@ function renderGenerationInputs(): HTMLElement {
   const stackField = el("div", "field");
   stackField.append(
     el("label", undefined, "官方模型栈"),
-    el("p", undefined, "TTS 改编配音 → H3 A-roll（speaker-v1 多 Take）→ gpt:Image 参考图 B-roll"),
+    el("p", undefined, "TTS 试听/音色样本 → H3 A-roll 口播成片（h3-ugc-replica-v1 多 Take）→ gpt:Image B-roll"),
   );
   section.append(stackField);
   return section;
@@ -1117,7 +1119,7 @@ function renderCreate(): HTMLElement {
     } else {
       const adapt = session.adaptation;
       if (adapt?.status === "complete") {
-        card.append(el("p", undefined, "参考图与改编配音已就绪，将使用参考图 + TTS 音频生成口播视频。"));
+        card.append(el("p", undefined, "参考图与改编配音已就绪。成片口播由 H3 按改写文案生成（TTS 仅作审查试听与音色样本）。"));
       } else if (adapt?.status === "running") {
         card.append(el("div", "status running", adapt.phase ?? "配音制作中，请稍候…"));
       } else {

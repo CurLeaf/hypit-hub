@@ -13,8 +13,8 @@
 1. 启动 Analysis：`hypit analysis`（或项目已有 UI）
 2. 上传参考视频 → **开始分析**
 3. 上传产品/人物参考图，填写改编说明
-4. **导演审查（你）**：编辑 `.hypit/analysis/director/`
-5. 用户在 UI 点击 **导演审查通过** → 自动制作 TTS 配音
+4. **导演审查（Cursor Agent）**：配置 `CURSOR_API_KEY` 后，Analysis 会自动启动 Agent 改写 `.hypit/analysis/director/`；也可在 UI 点「启动 Cursor Agent」
+5. 导演审查通过 → 自动制作 TTS 配音
 6. 用户试听配音确认后 → **一键复刻** → Plan/Pricing → Build
 
 ## 导演审查目录

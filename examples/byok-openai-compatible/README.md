@@ -56,8 +56,8 @@ The Analysis UI (`hypit analysis`) supports the official adaptation path:
 1. Click **使用默认视频** (CDN `origin.mp4` after `pnpm upload:origin`) or upload a **reference video** → analyze why it works (ANALYSIS / TIMELINE)
 2. Upload a **reference image** (product or presenter) in the sidebar
 3. Fill **改编说明** with your product name, selling points, and audience
-4. **Director review (Cursor Agent):** edit `.hypit/analysis/director/BRIEF.md`, `TREATMENT.md`, `scenes.json` — see `AGENTS.md`
-5. Click **导演审查通过** in Analysis UI → TTS adaptation runs
+4. Set **`CURSOR_API_KEY`** in `.env` — Analysis auto-runs **Cursor Agent** to rewrite `.hypit/analysis/director/` dialogue
+5. TTS adaptation runs automatically after director review passes
 6. Enable **MiniMax H3 口播** (default when a reference image is present)
 7. Click **一键复刻** → generates `productions/replica-*/` with:
    - **Script**: chat model rewrites dialogue (keeps viral structure, new product copy)

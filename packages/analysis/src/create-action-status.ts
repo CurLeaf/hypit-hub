@@ -71,7 +71,7 @@ export function officialPathCheckHint(
   officialPathReady: boolean | undefined,
 ): string {
   if (officialPathReady !== true) {
-    return "请补齐上述未完成项。官方路径需要：LLM 解读/改写 + TTS 配音 + H3 口播 + 参考图 edits。";
+    return "请补齐上述未完成项。官方路径需要：LLM 解读/改写 + TTS 试听/音色样本 + H3 口播成片 + 参考图 edits。";
   }
   if (session.scaffold !== undefined) {
     return "检查已通过。工程已生成，请点击下方「开始生成视频」。";

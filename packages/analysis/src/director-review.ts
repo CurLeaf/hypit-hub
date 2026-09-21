@@ -1,10 +1,12 @@
-import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { buildAdaptationScenes } from "./scenes-from-structure.js";
+import type { ScenePlan } from "./scene-plan.js";
 import type { AnalysisSessionView, DirectorReviewView, ViralInsightView } from "./shared.js";
 
 const DIRECTOR_SUBDIR = ".hypit/analysis/director";
+const DIRECTOR_DRAFT_FILES = ["BRIEF.md", "TREATMENT.md", "scenes.json"] as const;
 
 export type DirectorSceneDraft = {
   readonly id: string;
@@ -19,6 +21,13 @@ export type DirectorPackage = {
 
 export function directorReviewDir(workspaceRoot: string): string {
   return join(workspaceRoot, DIRECTOR_SUBDIR);
+}
+
+export async function resetDirectorDrafts(workspaceRoot: string): Promise<void> {
+  const dir = directorReviewDir(workspaceRoot);
+  for (const name of DIRECTOR_DRAFT_FILES) {
+    await rm(join(dir, name), { force: true });
+  }
 }
 
 export function canStartAdaptation(review: DirectorReviewView | undefined): boolean {
@@ -58,15 +67,59 @@ export async function loadDirectorPackage(workspaceRoot: string): Promise<Direct
   return { briefMarkdown, treatmentMarkdown, scenes };
 }
 
+function normalizeSpokenText(text: string): string {
+  return text.replace(/\s+/gu, "");
+}
+
+/** Reject when every scene still matches reference ASR (direct copy). */
+export function validateDirectorScenesAdapted(
+  baseScenes: readonly Pick<ScenePlan, "momentId" | "text">[],
+  directorScenes: readonly DirectorSceneDraft[],
+): readonly string[] {
+  if (directorScenes.length === 0 || baseScenes.length === 0) return [];
+  const baseById = new Map(baseScenes.map((scene) => [scene.momentId, normalizeSpokenText(scene.text)]));
+  const unchanged = directorScenes.filter((scene) => {
+    const base = baseById.get(scene.id);
+    return base !== undefined && normalizeSpokenText(scene.text) === base;
+  });
+  if (unchanged.length === directorScenes.length) {
+    return ["scenes.json 仍为参考片原口播，请按新产品改写后再通过审查"];
+  }
+  return [];
+}
+
+/** Director scenes.json must align 1:1 with reference-video adaptation cuts. */
+export function validateDirectorSceneAlignment(
+  baseScenes: readonly Pick<ScenePlan, "momentId">[],
+  directorScenes: readonly DirectorSceneDraft[],
+): readonly string[] {
+  const issues: string[] = [];
+  const baseIds = baseScenes.map((scene) => scene.momentId);
+  const directorIds = new Set(directorScenes.map((scene) => scene.id));
+  const missing = baseIds.filter((id) => !directorIds.has(id));
+  if (missing.length > 0) {
+    issues.push(
+      `director/scenes.json 缺少与参考片切点对齐的段落：${missing.join("、")}（共需 ${baseIds.length} 段：${baseIds.join("、")}）`,
+    );
+  }
+  const extra = directorScenes.map((scene) => scene.id).filter((id) => !baseIds.includes(id));
+  if (extra.length > 0) {
+    issues.push(`director/scenes.json 含参考片切点中不存在的段落：${extra.join("、")}`);
+  }
+  return issues;
+}
+
 export function validateDirectorPackage(package_: DirectorPackage): readonly string[] {
   const issues: string[] = [];
   if (package_.briefMarkdown === undefined || package_.briefMarkdown.trim().length === 0) {
     issues.push("缺少 director/BRIEF.md");
-  } else if (/【待替换|【待填/u.test(package_.briefMarkdown)) {
-    issues.push("BRIEF.md 仍含占位符（【待替换】/【待填】），请补全产品信息");
+  } else if (/【待替换|【待填|（请填写|（请写明/u.test(package_.briefMarkdown)) {
+    issues.push("BRIEF.md 仍含占位符，请补全产品信息");
   }
   if (package_.treatmentMarkdown === undefined || package_.treatmentMarkdown.trim().length === 0) {
     issues.push("缺少 director/TREATMENT.md");
+  } else if (/【待替换|【待填|（请填写|（请写明/u.test(package_.treatmentMarkdown)) {
+    issues.push("TREATMENT.md 仍含占位符，请补全切点与表演说明");
   }
   const spoken = package_.scenes.map((scene) => scene.text.replace(/\s+/gu, "")).filter((text) => text.length > 0);
   if (spoken.length === 0) {
@@ -183,9 +236,18 @@ export async function ensureDirectorReviewRequest(input: {
   };
 }
 
-export async function approveDirectorReview(workspaceRoot: string): Promise<readonly string[]> {
+export async function approveDirectorReview(
+  workspaceRoot: string,
+  context?: { readonly session: AnalysisSessionView; readonly insight: ViralInsightView },
+): Promise<readonly string[]> {
   const package_ = await loadDirectorPackage(workspaceRoot);
-  return validateDirectorPackage(package_);
+  const issues = [...validateDirectorPackage(package_)];
+  if (context !== undefined && package_.scenes.length > 0) {
+    const baseScenes = buildAdaptationScenes(context.session, context.insight);
+    issues.push(...validateDirectorSceneAlignment(baseScenes, package_.scenes));
+    issues.push(...validateDirectorScenesAdapted(baseScenes, package_.scenes));
+  }
+  return issues;
 }
 
 export async function copyDirectorDocsToAdaptation(workspaceRoot: string, adaptationRoot: string): Promise<void> {

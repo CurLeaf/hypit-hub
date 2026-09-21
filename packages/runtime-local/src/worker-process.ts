@@ -180,12 +180,17 @@ export async function ensureRuntimeProcess(
   dataRoot: string,
   launch: RuntimeWorkerLaunch,
   timeoutMs = 10_000,
+  options?: { readonly packageRoot?: string },
 ): Promise<RuntimeProcessState> {
   const absolute = resolve(profile);
   const location = paths(dataRoot);
   await mkdir(location.root, { recursive: true });
   const releaseLaunch = await acquireLaunch(location.launch, timeoutMs);
   try {
+    if (options?.packageRoot !== undefined) {
+      const { loadWorkspaceEnv } = await import("@hypit/credential-store-env");
+      await loadWorkspaceEnv(options.packageRoot);
+    }
     const current = await runtimeProcessStatus(profile, dataRoot);
     if (current.state === "running") {
       return current;

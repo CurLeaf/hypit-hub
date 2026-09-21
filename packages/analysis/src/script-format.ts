@@ -3,13 +3,7 @@ export function sanitizeScriptId(id: string): string {
 }
 
 export function formatHostDialogue(text: string): string {
-  const words = text.replace(/\s+/gu, "");
-  if (words.length === 0) return "";
-  const chunks: string[] = [];
-  for (let offset = 0; offset < words.length; offset += 6) {
-    chunks.push(words.slice(offset, offset + 6));
-  }
-  return chunks.join(" || ");
+  return text.replace(/\s+/gu, "").trim();
 }
 
 export function buildOfficialScript(segments: readonly { readonly id: string; readonly text: string }[]): string {

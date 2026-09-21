@@ -1,0 +1,269 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import from="@hypit/script@1"/>
+  <import as="text" from="@hypit/text@1"/>
+  <import as="asset" from="@hypit/media@1"/>
+  <import as="gpt" from="@hypit/gpt-image@1"/>
+  <import as="h3" from="@hypit/minimax-h3@1"/>
+  <import as="speaker-kit" source="@hypit/seedance-kits/speaker"/>
+  <import as="pipeline" from="@hypit/media-pipeline@1"/>
+  <import as="whisperx" from="@hypit/whisperx@1"/>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="sound" from="@hypit/sound@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>
+  <import as="caption-fine" from="@hypit/caption-fine@1"/>
+  <import as="fonts" from="@hypit/fonts-open@1"/>
+  <import as="spatial" from="@hypit/spatial@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="render" from="@hypit/render-hyperframes@1"/>
+  <import as="recipes" source="../recipes.svs"/>
+
+  <script id="story">
+    <scene_1>
+      <HOST>用了两个月天 || 天吹才敢分享 || 的高速护发 || 吹风机
+    </scene_1>
+    <scene_2>
+      <HOST>@scene_2 机搭载HCR || 合金聚热环恒 || 温出风 @/scene_2
+    </scene_2>
+    <scene_3>
+      <HOST>@scene_3 风均匀不忽高 || 忽低吹完不 || 炸毛 @/scene_3
+    </scene_3>
+    <scene_4>
+      <HOST>@scene_4 毛合金聚热环 || 结构气流加温 || 更均匀 @/scene_4
+    </scene_4>
+    <scene_5>
+      <HOST>@scene_5 匀高速电机快 || 干又护发很 || 省心 @/scene_5
+    </scene_5>
+    <scene_6>
+      <HOST>@scene_6 心强韧发根防 || 脱三百多性价 || 比拉满 @/scene_6
+    </scene_6>
+    <scene_7>
+      <HOST>@scene_7 满但吹完顺滑 || 又有型姐妹们 || 别犹豫 @/scene_7
+    </scene_7>
+    <scene_8>
+      <HOST>@scene_8 豫还能当造型 || 风嘴日常冲 || 冲冲 @/scene_8
+    </scene_8>
+  </script>
+
+
+
+  <asset:Image id="product-reference" src="./../assets/product-reference.png"/>
+
+  <asset:Audio id="presenter-voice" src="./../assets/voice-reference.wav"/>
+  <text:Value id="scene-1-prompt">Vertical 9:16 UGC selfie-style video frame, shot on a phone front camera held at arm's length in a small home bathroom. A Chinese woman in her late 20s, bare face with light skincare sheen, damp hair loosely tied, wearing a simple beige ribbed tank top, stands in front of a slightly fogged mirror. She holds a matte blue-purple hairdryer at chest height, tilting her head toward the lens mid-sentence, expression relaxed and confiding like an old user sharing a real review. Soft natural window light from the left, warm bathroom bulb fill on the right, slight phone grain and mild lens distortion, cluttered-but-real counter with a folded towel and a jade plant blurred behind her. Slightly asymmetric casual framing, no on-screen text, no captions, no watermark, no logos, authentic non-studio look. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-1" prompt={scene-1-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-2-prompt">Vertical 9:16 UGC macro insert shot, handheld phone camera pushed close to the front barrel of a matte blue-purple high-speed hairdryer, focusing on a metallic alloy heating ring inside the nozzle. The ring glows faintly with a cool blue-violet internal light, brushed metal texture visible with fine concentric grooves and subtle reflections from bathroom window light. Shallow depth of field, bokeh of a white sink and tile wall behind, faint fingerprint smudge and dust particles on the plastic housing for realism. Slight handheld micro-shake and mild phone video noise, natural daylight, no on-screen text, no captions, no labels, no watermark, no readable branding, documentary product close-up aesthetic. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-2" prompt={scene-2-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-3-prompt">Vertical 9:16 UGC demonstration shot in a real bathroom, medium close-up of long dark hair being blown by a blue-purple hairdryer held in a woman's hand, strands lifting smoothly and evenly in a soft steady stream of warm air, no frizz, no wild flyaways, ends falling glossy and aligned. Steam and light mist from damp hair catches side window light, droplets on the mirror behind. Camera at chest height, slight handheld sway, phone video look with soft highlight bloom on wet hair. Muted neutral palette of tile grey, warm skin tone, cool blue-purple device accent. No on-screen text, no captions, no watermark, no logos, candid home-use realism. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-3" prompt={scene-3-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-4-prompt">Vertical 9:16 UGC cutaway-style insert shot, extreme close-up of a disassembled hairdryer showing the internal alloy heat ring structure with a visible airflow channel, thin illustrated-style lines suggesting air passing through the ring can only be implied visually without any letters or numbers. Clean but not studio-perfect: the parts rest on a pale bathroom counter on a small towel, soft window light raking across brushed metal, subtle blue-violet glow inside the ring, shallow depth of field with blurred tile background. Handheld phone macro framing, slight tilt, mild grain, realistic reflections and small dust specks. No on-screen text, no captions, no diagrams with letters, no watermark, no logos. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-4" prompt={scene-4-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-5-prompt">Vertical 9:16 UGC action shot in a small bathroom, medium shot of a woman holding a matte blue-purple hairdryer in one hand while lifting a section of wet hair with the other, hair visibly drying and smoothing in seconds, gentle mist swirling, water droplets on her shoulder and on the tile. The hairdryer is held lightly with a relaxed wrist, showing how portable it feels, arm not strained. Natural morning light from a small window, steam softening the background, mirror edge and shampoo bottles blurred out of focus. Handheld phone video framing with slight movement, warm skin tones against cool device color. No on-screen text, no captions, no watermark, no logos, casual home-vlog feel. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-5" prompt={scene-5-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-6-prompt">Vertical 9:16 UGC product beauty shot on a real bathroom counter, a matte blue-purple high-speed hairdryer resting on a folded white towel beside a jade plant and a ceramic tray, angled product-hero composition with the nozzle and handle both readable, soft window light from the left creating a gentle gradient across the body. A woman's hand enters the frame from the right, fingers just touching the handle, suggesting ownership rather than studio staging. Slight handheld framing imperfection, blurred tile wall and mirror behind, warm neutral palette with cool blue-violet accent. Realistic surface scuffs, no on-screen text, no captions, no price tags, no watermark, no readable logos. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-6" prompt={scene-6-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-7-prompt">Vertical 9:16 UGC A-roll return shot, front-facing phone selfie framing in a softly lit bathroom, a Chinese woman in her late 20s with now-dry smooth glossy hair looking directly into the lens, leaning slightly closer with a warm confident half-smile, eyebrows raised as she makes her point, one hand gesturing near her shoulder. Natural window light on her face, soft shadows under the chin, real skin texture, small flyaway strands around the temples, blurred tile and towel rack behind. Slight handheld sway and phone-video grain, intimate close framing, no on-screen text, no captions, no watermark, no logos, genuine friend-recommending tone. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-7" prompt={scene-7-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-8-prompt">Vertical 9:16 UGC two-beat shot: first a close-up of a woman's hands clicking a slim styling concentrator nozzle onto the matte blue-purple hairdryer, then a wide-ish bathroom mirror view of her blow-drying and shaping the front of her hair with a round brush, ends curling into a soft blowout. Final beat: she turns back toward the phone camera, gives a quick enthusiastic nod and a small thumbs-up while holding the dryer, hair bouncy and glossy. Natural daylight, handheld phone framing with casual movement, warm skin tones, cool blue-violet product accent, blurred bathroom clutter behind. No on-screen text, no captions, no watermark, no logos, energetic authentic UGC vibe. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-8" prompt={scene-8-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <time:Clock id="clock" frame-rate="30"/>
+  <spatial:Canvas id="vertical" width="1280" height="960"/>
+  <spatial:Frame id="speech-frame" within={vertical} left="0%" top="0%" right="100%" bottom="100%"/>
+  <spatial:Frame id="broll-frame" within={vertical} left="8%" top="12%" right="92%" bottom="55%"/>
+  <spatial:Extent id="scene-extent" width="1280" height="960"/>
+
+  <text:Value id="scene_1-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_1.dialogue}/>
+    <text:Set name="action" text={scene_1-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_1-take" prompt={scene_1-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_1-media" source={scene_1-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_1-semantic" narrative={story}
+    segment={story.segment.scene_1} media={scene_1-media.media} language="zh"/>
+
+  <text:Value id="scene_2-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_2-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_2.dialogue}/>
+    <text:Set name="action" text={scene_2-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_2-take" prompt={scene_2-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_2-media" source={scene_2-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_2-semantic" narrative={story}
+    segment={story.segment.scene_2} media={scene_2-media.media} language="zh"/>
+
+  <text:Value id="scene_3-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_3-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_3.dialogue}/>
+    <text:Set name="action" text={scene_3-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_3-take" prompt={scene_3-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_3-media" source={scene_3-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_3-semantic" narrative={story}
+    segment={story.segment.scene_3} media={scene_3-media.media} language="zh"/>
+
+  <text:Value id="scene_4-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_4-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_4.dialogue}/>
+    <text:Set name="action" text={scene_4-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_4-take" prompt={scene_4-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_4-media" source={scene_4-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_4-semantic" narrative={story}
+    segment={story.segment.scene_4} media={scene_4-media.media} language="zh"/>
+
+  <text:Value id="scene_5-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_5-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_5.dialogue}/>
+    <text:Set name="action" text={scene_5-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_5-take" prompt={scene_5-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_5-media" source={scene_5-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_5-semantic" narrative={story}
+    segment={story.segment.scene_5} media={scene_5-media.media} language="zh"/>
+
+  <text:Value id="scene_6-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_6-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_6.dialogue}/>
+    <text:Set name="action" text={scene_6-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_6-take" prompt={scene_6-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_6-media" source={scene_6-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_6-semantic" narrative={story}
+    segment={story.segment.scene_6} media={scene_6-media.media} language="zh"/>
+
+  <text:Value id="scene_7-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_7-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_7.dialogue}/>
+    <text:Set name="action" text={scene_7-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_7-take" prompt={scene_7-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_7-media" source={scene_7-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_7-semantic" narrative={story}
+    segment={story.segment.scene_7} media={scene_7-media.media} language="zh"/>
+
+  <text:Value id="scene_8-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_8-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_8.dialogue}/>
+    <text:Set name="action" text={scene_8-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_8-take" prompt={scene_8-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_8-media" source={scene_8-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_8-semantic" narrative={story}
+    segment={story.segment.scene_8} media={scene_8-media.media} language="zh"/>
+
+
+
+  <time:Timeline id="speech" clock={clock}>
+    <time:Take source={scene_1-semantic.take}/>
+    <time:Take source={scene_2-semantic.take}/>
+    <time:Take source={scene_3-semantic.take}/>
+    <time:Take source={scene_4-semantic.take}/>
+    <time:Take source={scene_5-semantic.take}/>
+    <time:Take source={scene_6-semantic.take}/>
+    <time:Take source={scene_7-semantic.take}/>
+    <time:Take source={scene_8-semantic.take}/>
+  </time:Timeline>
+
+  <sound:Style id="speech-sound-style"/>
+  <sound:Track id="speech-sound" timeline={speech.timeline}>
+    <sound:Use style={speech-sound-style}/>
+  </sound:Track>
+
+  <media-track:Track id="visual" timeline={speech.timeline} canvas={vertical}>
+    <media-track:Item id="scene_1-hero" media={scene_1-media.media}
+      during={story.segment.scene_1} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_2-hero" media={scene_2-media.media}
+      during={story.segment.scene_2} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_3-hero" media={scene_3-media.media}
+      during={story.segment.scene_3} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_4-hero" media={scene_4-media.media}
+      during={story.segment.scene_4} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_5-hero" media={scene_5-media.media}
+      during={story.segment.scene_5} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_6-hero" media={scene_6-media.media}
+      during={story.segment.scene_6} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_7-hero" media={scene_7-media.media}
+      during={story.segment.scene_7} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_8-hero" media={scene_8-media.media}
+      during={story.segment.scene_8} frame={speech-frame} appearance={recipes.media.hero}/>
+
+  </media-track:Track>
+
+  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
+  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
+  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
+    <caption-fine:Use style={caption-style}/>
+  </caption-fine:Track>
+
+  <film:Film id="main" canvas={vertical} timeline={speech.timeline} appearance={recipes.film.vertical}>
+    <film:Track source={visual.visual}/>
+    <film:Track source={speech-sound.audio}/>
+    <film:Track source={captions.track}/>
+  </film:Film>
+  <render:Video id="final" composition={main.composition} timeline={speech.timeline}/>
+</svml>

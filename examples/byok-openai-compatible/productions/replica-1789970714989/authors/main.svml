@@ -1,0 +1,243 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import from="@hypit/script@1"/>
+  <import as="text" from="@hypit/text@1"/>
+  <import as="asset" from="@hypit/media@1"/>
+  <import as="gpt" from="@hypit/gpt-image@1"/>
+  <import as="h3" from="@hypit/minimax-h3@1"/>
+  <import as="speaker-kit" source="@hypit/seedance-kits/speaker"/>
+  <import as="pipeline" from="@hypit/media-pipeline@1"/>
+  <import as="whisperx" from="@hypit/whisperx@1"/>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="sound" from="@hypit/sound@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>
+  <import as="caption-fine" from="@hypit/caption-fine@1"/>
+  <import as="fonts" from="@hypit/fonts-open@1"/>
+  <import as="spatial" from="@hypit/spatial@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="render" from="@hypit/render-hyperframes@1"/>
+  <import as="recipes" source="../recipes.svs"/>
+
+  <script id="story">
+    <scene_1>
+      <HOST>穿了三个月通 || 勤周末都穿才 || 敢分享的叠穿 || 套装
+    </scene_1>
+    <scene_2>
+      <HOST>@scene_2 橄榄绿工装夹 || 克大口袋一眼 || 机能感立起来 @/scene_2
+    </scene_2>
+    <scene_3>
+      <HOST>@scene_3 军绿配色搭白 || 内搭层次不用 || 想 @/scene_3
+    </scene_3>
+    <scene_4>
+      <HOST>@scene_4 内外配好拉开 || 就是完整造型 @/scene_4
+    </scene_4>
+    <scene_5>
+      <HOST>@scene_5 松紧收口廓形 || 上身有余量很 || 省心 @/scene_5
+    </scene_5>
+    <scene_6>
+      <HOST>@scene_6 三百多的价格 || 性价比直接拉 || 满但上身好看 || 又有型 @/scene_6
+    </scene_6>
+    <scene_7>
+      <HOST>@scene_7 兄弟们别犹豫 || 还可以单穿夹 || 克冲冲冲 @/scene_7
+    </scene_7>
+  </script>
+
+
+
+  <asset:Image id="product-reference" src="./../assets/product-reference.png"/>
+
+  <asset:Audio id="presenter-voice" src="./../assets/voice-reference.wav"/>
+  <text:Value id="scene-1-prompt">Vertical 9:16 UGC smartphone selfie-video frame, pure A-roll, no cut. A young East Asian man in his late 20s, short black hair, light stubble, natural skin texture, chest-up framing, phone held at chest height and tilted slightly up so he looks down the lens. He is mid-sentence, casual and confident, one hand casually tugging the hem of his jacket, small natural head movement. Outfit as hero product: boxy olive-green utility work jacket with two large flap pockets and a matte cotton-twill surface, worn open over a crisp white ribbed high-neck turtleneck. Setting: a real lived-in apartment corner beside a window, blurred background with a low sofa, a drying rack and a potted plant. Soft diffused daylight from the left, warm skin tones, mild digital grain, slight wide-angle lens distortion typical of a phone front camera, shallow depth of field on the background. Photorealistic, unstyled, honest self-shot look. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no legible lettering anywhere in frame. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-1" prompt={scene-1-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-2-prompt">Vertical 9:16 UGC B-roll insert, tight close-up on the chest pocket of an olive-green utility work jacket. A man's hand slides casually into the large flap pocket, thumb hooking the pocket lip so the flap lifts and the volume of the pocket reads as functional and sturdy. Visible material detail: matte cotton-twill weave, tonal olive stitching, matte metal snap with no lettering, slightly frayed fabric edge. Shallow depth of field, white turtleneck collar blurred at the top edge of frame, out-of-focus apartment background. Handheld micro-shake, natural window daylight raking across the fabric to reveal texture, slight underexposure, smartphone macro look with soft corner falloff. Photorealistic, tactile, product-in-hand feeling. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no legible lettering. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-2" prompt={scene-2-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-3-prompt">Vertical 9:16 UGC mid-shot, waist-up three-quarter framing of a young East Asian man standing against a plain concrete-grey apartment wall. He wears the olive-green boxy utility jacket open over a white ribbed high-neck turtleneck, arms slightly away from the body, weight on one leg, chin turned a little to camera as if mid-sentence. The image is about colour blocking: deep olive green mass against clean white on a neutral grey field, softly desaturated background so the outfit separates clearly. Natural side daylight, soft shadow on the wall behind his shoulder, handheld phone framing slightly tilted, mild grain and slight motion blur on the hem. Real apartment, not a studio. Photorealistic, everyday and unpolished. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no legible lettering. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-3" prompt={scene-3-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-4-prompt">Vertical 9:16 UGC B-roll, chest-up framing of a young East Asian man unzipping and peeling open the front of his olive-green utility jacket with both hands, freeing the lapels so the white ribbed high-neck turtleneck underneath is fully revealed. Front-facing, hands mid-action, zipper pulled down to the sternum, jacket front hanging open with visible drape and inner lining. Clean composition centred on the chest, background a blurred neutral interior with a doorway or soft wall, natural window light from the front-left making the white turtleneck the brightest element in frame. Slight handheld shake, quick candid movement blur on the hands, soft smartphone colour, mild grain. Photorealistic layering demonstration. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no legible lettering. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-4" prompt={scene-4-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-5-prompt">Vertical 9:16 UGC macro detail insert, extreme close-up of a jacket sleeve cuff at the forearm: elasticated ribbed cuff with a visible cinched gather, and the man's fingers pinching and releasing the elastic to show it springs back. Same olive-green matte cotton-twill fabric, tonal stitching, a small matte metal hardware piece with no lettering, fine fabric grain visible. In the soft-focus background, the loose boxy body of the jacket and the white turtleneck hem hint at excess room in the silhouette. Handheld, tight, a little shaky, natural daylight from a window at a low angle to catch the fabric wrinkles, shallow depth of field with creamy falloff, realistic skin and fingernails. Photorealistic, tactile. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no legible lettering. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-5" prompt={scene-5-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-6-prompt">Vertical 9:16 UGC hero mid-shot with a value feeling, no numbers or price tags shown. A young East Asian man stands three-quarter turned in a bright minimal apartment, wearing the olive-green boxy utility jacket open over the white ribbed high-neck turtleneck, one hand in a large flap pocket, other hand adjusting the collar, chin lifted slightly with an easy confident look toward the lens. Composition leaves clean negative space at the bottom of frame to imply a spoken price beat, achieved purely with empty space, never with text or graphics. Strong soft daylight from a window behind camera, gentle contrast, warm highlights on the olive fabric, faint flare at the top edge, phone-camera lens character, slight grain. Photorealistic, this is his best-styled state. No on-screen text, no subtitles, no captions, no price tags, no numerals, no watermarks, no brand logos, no legible lettering. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-6" prompt={scene-6-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <text:Value id="scene-7-prompt">Vertical 9:16 UGC street B-roll, jacket worn alone as a single layer over a plain white crew tee, no turtleneck. A young East Asian man walks toward camera along a sunlit city sidewalk with shuttered storefronts and bare tree branches behind him, mid-stride, hands relaxed, jacket moving with the walk, big flap pockets and boxy shoulders reading clearly against the street. Golden late-afternoon light from behind camera-left, warm rim on his hair and shoulder, a little handheld motion blur in the limbs and background passersby, candid unposed expression, slight upward camera angle. Urban documentary feel, smartphone colour grading, mild grain, real pavement texture. No on-screen text, no subtitles, no captions, no watermarks, no brand logos, no storefront signage, no legible lettering anywhere. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="scene-7" prompt={scene-7-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <time:Clock id="clock" frame-rate="30"/>
+  <spatial:Canvas id="vertical" width="1280" height="960"/>
+  <spatial:Frame id="speech-frame" within={vertical} left="0%" top="0%" right="100%" bottom="100%"/>
+  <spatial:Frame id="broll-frame" within={vertical} left="8%" top="12%" right="92%" bottom="55%"/>
+  <spatial:Extent id="scene-extent" width="1280" height="960"/>
+
+  <text:Value id="scene_1-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_1.dialogue}/>
+    <text:Set name="action" text={scene_1-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_1-take" prompt={scene_1-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_1-media" source={scene_1-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_1-semantic" narrative={story}
+    segment={story.segment.scene_1} media={scene_1-media.media} language="zh"/>
+
+  <text:Value id="scene_2-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_2-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_2.dialogue}/>
+    <text:Set name="action" text={scene_2-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_2-take" prompt={scene_2-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_2-media" source={scene_2-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_2-semantic" narrative={story}
+    segment={story.segment.scene_2} media={scene_2-media.media} language="zh"/>
+
+  <text:Value id="scene_3-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_3-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_3.dialogue}/>
+    <text:Set name="action" text={scene_3-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_3-take" prompt={scene_3-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_3-media" source={scene_3-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_3-semantic" narrative={story}
+    segment={story.segment.scene_3} media={scene_3-media.media} language="zh"/>
+
+  <text:Value id="scene_4-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_4-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_4.dialogue}/>
+    <text:Set name="action" text={scene_4-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_4-take" prompt={scene_4-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_4-media" source={scene_4-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_4-semantic" narrative={story}
+    segment={story.segment.scene_4} media={scene_4-media.media} language="zh"/>
+
+  <text:Value id="scene_5-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_5-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_5.dialogue}/>
+    <text:Set name="action" text={scene_5-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_5-take" prompt={scene_5-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_5-media" source={scene_5-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_5-semantic" narrative={story}
+    segment={story.segment.scene_5} media={scene_5-media.media} language="zh"/>
+
+  <text:Value id="scene_6-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_6-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_6.dialogue}/>
+    <text:Set name="action" text={scene_6-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_6-take" prompt={scene_6-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_6-media" source={scene_6-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_6-semantic" narrative={story}
+    segment={story.segment.scene_6} media={scene_6-media.media} language="zh"/>
+
+  <text:Value id="scene_7-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="scene_7-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.scene_7.dialogue}/>
+    <text:Set name="action" text={scene_7-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="scene_7-take" prompt={scene_7-prompt} duration="4"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="scene_7-media" source={scene_7-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="scene_7-semantic" narrative={story}
+    segment={story.segment.scene_7} media={scene_7-media.media} language="zh"/>
+
+
+
+  <time:Timeline id="speech" clock={clock}>
+    <time:Take source={scene_1-semantic.take}/>
+    <time:Take source={scene_2-semantic.take}/>
+    <time:Take source={scene_3-semantic.take}/>
+    <time:Take source={scene_4-semantic.take}/>
+    <time:Take source={scene_5-semantic.take}/>
+    <time:Take source={scene_6-semantic.take}/>
+    <time:Take source={scene_7-semantic.take}/>
+  </time:Timeline>
+
+  <sound:Style id="speech-sound-style"/>
+  <sound:Track id="speech-sound" timeline={speech.timeline}>
+    <sound:Use style={speech-sound-style}/>
+  </sound:Track>
+
+  <media-track:Track id="visual" timeline={speech.timeline} canvas={vertical}>
+    <media-track:Item id="scene_1-hero" media={scene_1-media.media}
+      during={story.segment.scene_1} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_2-hero" media={scene_2-media.media}
+      during={story.segment.scene_2} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_3-hero" media={scene_3-media.media}
+      during={story.segment.scene_3} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_4-hero" media={scene_4-media.media}
+      during={story.segment.scene_4} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_5-hero" media={scene_5-media.media}
+      during={story.segment.scene_5} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_6-hero" media={scene_6-media.media}
+      during={story.segment.scene_6} frame={speech-frame} appearance={recipes.media.hero}/>
+    <media-track:Item id="scene_7-hero" media={scene_7-media.media}
+      during={story.segment.scene_7} frame={speech-frame} appearance={recipes.media.hero}/>
+
+  </media-track:Track>
+
+  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
+  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
+  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
+    <caption-fine:Use style={caption-style}/>
+  </caption-fine:Track>
+
+  <film:Film id="main" canvas={vertical} timeline={speech.timeline} appearance={recipes.film.vertical}>
+    <film:Track source={visual.visual}/>
+    <film:Track source={speech-sound.audio}/>
+    <film:Track source={captions.track}/>
+  </film:Film>
+  <render:Video id="final" composition={main.composition} timeline={speech.timeline}/>
+</svml>

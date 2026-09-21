@@ -8,8 +8,11 @@ import {
   approveDirectorReview,
   canStartAdaptation,
   ensureDirectorReviewRequest,
+  resetDirectorDrafts,
   validateDirectorPackage,
+  validateDirectorSceneAlignment,
 } from "../src/director-review.js";
+import { buildAdaptationScenes } from "../src/scenes-from-structure.js";
 import type { AnalysisSessionView, ViralInsightView } from "../src/shared.js";
 
 const insight: ViralInsightView = {
@@ -48,6 +51,25 @@ test("ensureDirectorReviewRequest creates director drafts", async () => {
   assert.ok(await readFile(review.briefPath, "utf8").then((text) => text.includes("导演审查稿")));
 });
 
+test("resetDirectorDrafts removes stale director drafts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hypit-director-"));
+  const review = await ensureDirectorReviewRequest({ session: session(root), insight });
+  await writeFile(review.briefPath, "# BRIEF\n旧产品\n", "utf8");
+  await resetDirectorDrafts(root);
+  const issues = await approveDirectorReview(root);
+  assert.ok(issues.some((issue) => issue.includes("缺少 director/BRIEF.md")));
+});
+
+test("validateDirectorSceneAlignment requires scene ids to match reference cuts", () => {
+  const baseScenes = buildAdaptationScenes(session("/tmp"), insight);
+  const aligned = baseScenes.map((scene) => ({ id: scene.momentId, text: "口播" }));
+  assert.deepEqual(validateDirectorSceneAlignment(baseScenes, aligned), []);
+
+  const missing = aligned.slice(0, -1);
+  const issues = validateDirectorSceneAlignment(baseScenes, missing);
+  assert.ok(issues.some((issue) => issue.includes("缺少")));
+});
+
 test("approveDirectorReview rejects placeholder brief", async () => {
   const root = await mkdtemp(join(tmpdir(), "hypit-director-"));
   const review = await ensureDirectorReviewRequest({ session: session(root), insight });
@@ -56,4 +78,19 @@ test("approveDirectorReview rejects placeholder brief", async () => {
   await writeFile(review.scenesPath, `${JSON.stringify([{ id: "scene-1", text: "测试口播" }])}\n`, "utf8");
   const issues = await approveDirectorReview(root);
   assert.ok(issues.some((issue) => issue.includes("占位符")));
+});
+
+test("approveDirectorReview rejects unchanged reference scenes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hypit-director-"));
+  const review = await ensureDirectorReviewRequest({ session: session(root), insight });
+  const baseScenes = buildAdaptationScenes(session(root), insight);
+  await writeFile(review.briefPath, "# BRIEF\n产品完整\n", "utf8");
+  await writeFile(review.treatmentPath, "# TREATMENT\nok\n", "utf8");
+  await writeFile(
+    review.scenesPath,
+    `${JSON.stringify(baseScenes.map((scene) => ({ id: scene.momentId, text: scene.text })), null, 2)}\n`,
+    "utf8",
+  );
+  const issues = await approveDirectorReview(root, { session: session(root), insight });
+  assert.ok(issues.some((issue) => issue.includes("原口播")));
 });

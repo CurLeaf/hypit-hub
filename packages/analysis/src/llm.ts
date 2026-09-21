@@ -112,13 +112,21 @@ export async function chatCompletion(input: {
   return content;
 }
 
+function repairJsonText(text: string): string {
+  return text
+    .replace(/,\s*([}\]])/gu, "$1")
+    .replace(/\u201c|\u201d/gu, "\"")
+    .replace(/\u2018|\u2019/gu, "'");
+}
+
 export function extractJsonObject(text: string): Record<string, unknown> {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/u.exec(text);
   const candidate = fenced?.[1]?.trim() ?? text.trim();
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("模型未返回有效 JSON");
-  const parsed: unknown = JSON.parse(candidate.slice(start, end + 1));
+  const jsonText = repairJsonText(candidate.slice(start, end + 1));
+  const parsed: unknown = JSON.parse(jsonText);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("模型 JSON 格式无效");
   return parsed as Record<string, unknown>;
 }
