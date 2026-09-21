@@ -32,6 +32,37 @@ uv run --project services/whisperx --frozen hypit-whisperx-prepare
 uv run --project services/whisperx --frozen hypit-whisperx-check
 ```
 
+uv prefers the CPython builds it downloaded itself, so a machine that already manages Python with
+vfox, mise, asdf or pyenv would otherwise end up with a second interpreter under uv's data
+directory. `HYPIT_PYTHON` names the interpreter this environment is built from instead, as an
+absolute path to the executable:
+
+```bash
+# vfox; `vfox current python` reports which version this is
+export HYPIT_PYTHON="${VFOX_HOME:-$HOME/.vfox}/sdks/python/bin/python3"
+```
+
+The same variable reaches the OpenCV program and the pinned `yt-dlp` project. A bare version like
+`3.13` is not enough to adopt a version manager's interpreter: uv still resolves version requests
+through its own preference order, which reaches for its downloads first. An explicit `UV_PYTHON` is
+left alone.
+
+An environment that already exists is not rebuilt by setting the variable. These reconcile steps run
+before a cold start, so WhisperX's `uv sync` adopts the new interpreter and replaces the environment
+that does not match it; the pinned `yt-dlp` does the same on its next fetch. The OpenCV environment
+reports itself healthy with the interpreter it already has, so removing its Program Home directory
+is what rebuilds that one.
+
+A checkout environment such as `services/whisperx/.venv` is deliberately managed, so nothing
+reconciles it on its own: name the interpreter on the sync that rebuilds it.
+
+```bash
+UV_PYTHON="$HYPIT_PYTHON" uv sync --project services/whisperx --frozen
+```
+
+Its `pyvenv.cfg` then reports `home` at that interpreter, and `uv run --project services/whisperx
+--frozen hypit-whisperx-service` starts the warm service from it.
+
 The first model start may download ASR and alignment weights. Production should put the relevant
 Hugging Face cache on persistent storage. `hypit-whisperx-prepare` separately installs NLTK's
 `punkt_tab` sentence data through NLTK's own downloader. This resource is required by WhisperX

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildInsightFromSession } from "../src/insight-builder.ts";
-import { joinTranscriptText, normalizeTranscriptText, transcriptSnippetAt } from "../src/transcript-text.ts";
+import { buildInsightFromSession } from "../src/insight-builder.js";
+import { joinTranscriptText, normalizeTranscriptText, transcriptSnippetAt } from "../src/transcript-text.js";
 
 test("joinTranscriptText merges spaced Chinese characters", () => {
   const words = [{ text: "群" }, { text: "星" }, { text: "云" }];

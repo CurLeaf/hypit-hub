@@ -4,3 +4,24 @@ packages:
   # Shipped examples are repository fixtures. Real authored projects always live outside this
   # tool checkout and resolve their own project-local packages through the Host's project root.
   - examples/*/packages/*
+
+# pnpm 10 does not run dependency install scripts unless they are allowlisted. Every entry below
+# was reviewed and is safe to skip on the platforms this tool ships:
+# - esbuild: postinstall only verifies the platform binary already installed as an optional
+#   dependency (@esbuild/linux-x64 and friends).
+# - koffi: postinstall precompiles the native addon with cnoke, but the package already ships
+#   prebuilt bindings under lib/native for every supported platform.
+# - onnxruntime-node: postinstall downloads Linux/x64 CUDA binaries only. The CPU binaries are
+#   bundled in the tarball and are the ones this tool uses.
+# - protobufjs: postinstall prints an advisory warning about dependency version ranges.
+# - puppeteer: postinstall downloads Puppeteer's own Chrome. Callers always pass an explicit
+#   executablePath: packages/browser-capture installs a pinned Chrome through @puppeteer/browsers,
+#   and @hyperframes/engine resolves chrome-headless-shell itself.
+# - @google/genai: preinstall is a no-op echo, prepare only builds the package for its publisher.
+ignoredBuiltDependencies:
+  - '@google/genai'
+  - esbuild
+  - koffi
+  - onnxruntime-node
+  - protobufjs
+  - puppeteer

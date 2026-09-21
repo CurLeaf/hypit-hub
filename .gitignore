@@ -72,3 +72,8 @@ examples/**/.svml/
 
 # Reverse-engineering scratch projects live outside the repository too
 /projects/*
+
+# Analysis replica outputs and local origin footage stay on the machine.
+/origin.mp4
+/productions/
+/references/

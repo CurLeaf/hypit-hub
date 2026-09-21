@@ -20,6 +20,7 @@ export function buildOfficialScript(segments: readonly { readonly id: string; re
     if (body.length === 0) continue;
     const tagId = sanitizeScriptId(segment.id);
     const host = index === 0 ? body : `@${tagId} ${body} @/${tagId}`;
+    // Role cues are bare tags; `</HOST>` is parsed as a Segment close and fails check.
     blocks.push(`    <${tagId}>\n      <HOST>${host}\n    </${tagId}>`);
     index += 1;
   }

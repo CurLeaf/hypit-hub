@@ -1,13 +1,20 @@
 import type { CredentialRef } from "@hypit/endpoint-kit";
 
-export type OpenAiCompatibleUploadMode = "openai-json" | "minimax-multipart";
-export type OpenAiCompatibleReferenceUpload = "gateway" | "s3";
+import type { S3PublicUploadConfig } from "./s3-public-upload.js";
+
+export const VIDEO_ADAPTERS = ["openai-videos", "async-tasks", "minimax-v2"] as const;
+export type VideoAdapter = (typeof VIDEO_ADAPTERS)[number];
+
+export function parseVideoAdapter(value: string | undefined): VideoAdapter {
+  if (value === undefined) return "openai-videos";
+  if ((VIDEO_ADAPTERS as readonly string[]).includes(value)) return value as VideoAdapter;
+  throw new Error("OpenAI-compatible videoAdapter must be openai-videos, async-tasks, or minimax-v2");
+}
 
 export type OpenAiCompatibleRoutes = {
   readonly image: string;
   readonly imageEdits: string;
   readonly speech: string;
-  readonly fileUpload: string;
   readonly videoSubmit: string;
   readonly videoStatus: string;
 };
@@ -16,7 +23,6 @@ export const defaultOpenAiCompatibleRoutes: OpenAiCompatibleRoutes = {
   image: "/images/generations",
   imageEdits: "/images/edits",
   speech: "/audio/speech",
-  fileUpload: "/files",
   videoSubmit: "/videos",
   videoStatus: "/videos/{id}",
 };
@@ -41,23 +47,17 @@ export function routePath(template: string, values: Readonly<Record<string, stri
 export class OpenAiCompatibleClient {
   readonly baseUrl: string;
   readonly routes: OpenAiCompatibleRoutes;
-  readonly uploadMode: OpenAiCompatibleUploadMode;
-  readonly referenceUpload: OpenAiCompatibleReferenceUpload;
   readonly requestTimeoutMs: number;
   readonly fetcher: typeof globalThis.fetch;
 
   constructor(options: {
     readonly baseUrl: string;
     readonly routes?: Partial<OpenAiCompatibleRoutes>;
-    readonly uploadMode?: OpenAiCompatibleUploadMode;
-    readonly referenceUpload?: OpenAiCompatibleReferenceUpload;
     readonly requestTimeoutMs?: number;
     readonly fetch?: typeof globalThis.fetch;
   }) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.routes = { ...defaultOpenAiCompatibleRoutes, ...options.routes };
-    this.uploadMode = options.uploadMode ?? "openai-json";
-    this.referenceUpload = options.referenceUpload ?? "gateway";
     this.requestTimeoutMs = options.requestTimeoutMs ?? 120_000;
     this.fetcher = options.fetch ?? globalThis.fetch;
   }
@@ -108,14 +108,14 @@ export type OpenAiCompatibleProviderOptions = {
   readonly apiKey: CredentialRef;
   readonly models: Readonly<Record<string, string>>;
   readonly routes?: Partial<OpenAiCompatibleRoutes>;
-  readonly uploadMode?: OpenAiCompatibleUploadMode;
-  readonly referenceUpload?: OpenAiCompatibleReferenceUpload;
-  readonly videoAdapter?: "openai-videos" | "async-tasks" | "minimax-v2";
+  readonly videoAdapter?: VideoAdapter;
   readonly defaultConcurrency?: number;
   readonly pollIntervalMs?: number;
   readonly operationTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
   readonly fetch?: typeof globalThis.fetch;
+  /** When set, reference image/audio go to this public OSS/S3 bucket instead of `POST /files`. */
+  readonly referenceUpload?: S3PublicUploadConfig;
 };
 
 export function capabilityKey(capability: { module: { name: string; version: string }; name: string }): string {

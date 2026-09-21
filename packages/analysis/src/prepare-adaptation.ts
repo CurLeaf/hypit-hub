@@ -53,7 +53,7 @@ export async function prepareProductAdaptation(input: {
   input.onPhase?.("解读参考片…");
   const insight = await generateInsight({
     session,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
 
@@ -65,8 +65,8 @@ export async function prepareProductAdaptation(input: {
     brief = session.brief ?? await generateBrief({
       session,
       insight,
-      goal: input.goal,
-      runtimePath: input.runtimePath,
+      ...(input.goal === undefined ? {} : { goal: input.goal }),
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
       requireLlm: true,
     });
   }
@@ -81,7 +81,7 @@ export async function prepareProductAdaptation(input: {
       session,
       insight,
       brief,
-      runtimePath: input.runtimePath,
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
       requireLlm: true,
     });
   }
@@ -99,8 +99,8 @@ export async function prepareProductAdaptation(input: {
       brief,
       treatment,
       scenes: baseScenes,
-      goal: input.goal,
-      runtimePath: input.runtimePath,
+      ...(input.goal === undefined ? {} : { goal: input.goal }),
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
       requireSuccess: true,
     });
   }
@@ -116,7 +116,7 @@ export async function prepareProductAdaptation(input: {
     mode: "tts",
     session,
     destination: generatedSpeechPath,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scriptText: spokenText,
     extractReferenceAudio,
   });

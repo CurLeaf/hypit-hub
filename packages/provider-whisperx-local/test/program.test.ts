@@ -33,6 +33,60 @@ test("the Provider declares how to bring WhisperX up and how to recognise it", (
     join(options().hostStateRoot, "programs", "whisperx-whisperx.test-127.0.0.1%3A8765"));
 });
 
+/**
+ * `HYPIT_PYTHON` is the hypit-level name for the interpreter uv should build from: a machine that
+ * already manages Python with vfox, mise, asdf or pyenv should not grow a second one under uv's
+ * data directory. It reaches uv as `UV_PYTHON`, and an explicit `UV_PYTHON` is never second-guessed.
+ */
+function withPythonEnvironment(
+  variables: Readonly<Record<string, string | undefined>>,
+  run: () => void,
+): void {
+  const saved = {
+    HYPIT_PYTHON: process.env.HYPIT_PYTHON,
+    UV_PYTHON: process.env.UV_PYTHON,
+  };
+  try {
+    delete process.env.HYPIT_PYTHON;
+    delete process.env.UV_PYTHON;
+    for (const [name, value] of Object.entries(variables)) {
+      if (value !== undefined) process.env[name] = value;
+    }
+    run();
+  } finally {
+    delete process.env.HYPIT_PYTHON;
+    delete process.env.UV_PYTHON;
+    for (const [name, value] of Object.entries(saved)) {
+      if (value !== undefined) process.env[name] = value;
+    }
+  }
+}
+
+function installEnvironment(): Readonly<Record<string, string>> | undefined {
+  return localWhisperXProgram(options()).installation?.commands[0]?.env;
+}
+
+test("a managed environment is built from the interpreter the machine already has", () => {
+  withPythonEnvironment({ HYPIT_PYTHON: "/opt/vfox/sdks/python/bin/python3.13" }, () => {
+    assert.equal(installEnvironment()?.UV_PYTHON, "/opt/vfox/sdks/python/bin/python3.13");
+  });
+});
+
+test("an explicit UV_PYTHON is uv's own decision and is left alone", () => {
+  withPythonEnvironment({
+    HYPIT_PYTHON: "/opt/vfox/sdks/python/bin/python3.13",
+    UV_PYTHON: "3.12",
+  }, () => {
+    assert.equal(installEnvironment()?.UV_PYTHON, undefined);
+  });
+});
+
+test("without either variable uv is left to choose for itself", () => {
+  withPythonEnvironment({}, () => {
+    assert.equal(installEnvironment()?.UV_PYTHON, undefined);
+  });
+});
+
 test("a deployment that installs WhisperX elsewhere overrides the command", () => {
   const program = localWhisperXProgram(options({
     serviceCommand: { command: "conda", args: ["run", "whisperx-serve"] },

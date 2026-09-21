@@ -66,7 +66,7 @@ export async function transcribeVideo(input: {
   readonly source: string;
   readonly language: WhisperXLanguage;
   readonly host: CreationHost;
-  readonly onPhase?(phase: string): void;
+  onPhase?(phase: string): void;
 }): Promise<{ readonly passages: readonly TranscriptPassageView[]; readonly words: readonly TranscriptWordView[] }> {
   const evidence = await extractSpeechEvidenceBytes(input.source);
   const resources = new MemoryResourceStore();
@@ -253,8 +253,9 @@ export async function runFullAnalysis(input: {
   readonly videoPath: string;
   readonly language: WhisperXLanguage;
   readonly runtimePath?: string;
-  readonly onPhase?(phase: string): void;
+  onPhase?(phase: string): void;
 }): Promise<AnalysisSessionView> {
+  const videoName = input.videoPath.split(/[\\/]/u).pop();
   const probe = await probeMedia(input.videoPath);
   input.onPhase?.("探测画面与音频…");
   const boundaries = await visualBoundaries(input.videoPath);
@@ -274,7 +275,7 @@ export async function runFullAnalysis(input: {
       source: input.videoPath,
       language: input.language,
       host,
-      onPhase: input.onPhase,
+      ...(input.onPhase === undefined ? {} : { onPhase: input.onPhase }),
     });
     passages = transcript.passages;
     words = transcript.words;
@@ -317,7 +318,7 @@ export async function runFullAnalysis(input: {
     workspaceRoot: input.workspaceRoot,
     ...(input.runtimePath === undefined ? {} : { runtimeProfile: input.runtimePath }),
     videoPath: input.videoPath,
-    videoName: input.videoPath.split(/[\\/]/u).pop(),
+    ...(videoName === undefined ? {} : { videoName }),
     probe,
     ...(passages.length > 0 ? {
       transcript: { language: input.language, passages, words, ...(transcriptPath === undefined ? {} : { path: transcriptPath }) },
@@ -334,7 +335,7 @@ export async function runFullAnalysis(input: {
     workspaceRoot: input.workspaceRoot,
     ...(input.runtimePath === undefined ? {} : { runtimeProfile: input.runtimePath }),
     videoPath: input.videoPath,
-    videoName: input.videoPath.split(/[\\/]/u).pop(),
+    ...(videoName === undefined ? {} : { videoName }),
     probe,
     ...(probe.hasAudio ? {
       transcript: { language: input.language, passages, words, ...(transcriptPath === undefined ? {} : { path: transcriptPath }) },
@@ -379,10 +380,11 @@ export async function loadSavedAnalysis(workspaceRoot: string): Promise<Analysis
       referenceArchive?: AnalysisSessionView["referenceArchive"];
     };
     if (raw.source === undefined || raw.probe === undefined) return undefined;
+    const videoName = raw.source.split(/[\\/]/u).pop();
     return {
       workspaceRoot,
       videoPath: raw.source,
-      videoName: raw.source.split(/[\\/]/u).pop(),
+      ...(videoName === undefined ? {} : { videoName }),
       probe: raw.probe,
       ...(raw.transcript === undefined ? {} : { transcript: raw.transcript }),
       ...(raw.boundaries === undefined ? {} : { boundaries: raw.boundaries }),

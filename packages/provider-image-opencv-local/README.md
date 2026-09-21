@@ -12,5 +12,8 @@ The Distribution ships the frozen deployment source from `services/image-opencv`
 Adapter's declared configuration, `programs up` installs it only when the machine Program Home has no
 healthy environment; the Endpoint, program probe and doctor all resolve the shared `.venv`
 interpreter. An explicit `pythonExecutable` selects an operator-managed compatible environment and
-suppresses the managed installation. The Endpoint call and
+suppresses the managed installation. `HYPIT_PYTHON` names the interpreter the managed environment is
+built from, so a machine that already manages Python with vfox, mise, asdf or pyenv does not grow a
+second one under uv's data directory; see the WhisperX service README for the exact form. The
+Endpoint call and
 inner image work share the configured capacity resources; no separate scheduler is hidden in this package.

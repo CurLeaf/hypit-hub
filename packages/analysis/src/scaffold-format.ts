@@ -73,7 +73,7 @@ export async function generateFormatReplicaProject(input: {
   const effectiveFormatId = useOfficialUgc
     ? (formatId === "explainer" || formatId === "talking-head" ? formatId : "ugc")
     : formatId;
-  const templateKey = FORMAT_TEMPLATE[effectiveFormatId] ?? FORMAT_TEMPLATE.ugc;
+  const templateKey = FORMAT_TEMPLATE[effectiveFormatId] ?? "examples/byok-openai-compatible/templates/ugc-replica";
   const templateDir = resolve(input.distributionRoot, templateKey);
   const ugcTemplateDir = resolve(input.distributionRoot, "examples/byok-openai-compatible/templates/ugc-replica");
 
@@ -127,7 +127,7 @@ export async function generateFormatReplicaProject(input: {
       layout,
       templateAssetsDir: join(templateDir, "assets"),
       workspaceRoot: input.workspaceRoot,
-      runtimePath: input.runtimePath,
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
       speechMode,
     });
   }
@@ -141,12 +141,12 @@ export async function generateFormatReplicaProject(input: {
     templateDir: ugcTemplateDir,
     workspaceRoot: input.workspaceRoot,
     formatId: effectiveFormatId,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     speechMode,
-    productReferencePath: input.productReferencePath,
-    videoAroll: input.videoAroll,
-    brief: input.brief,
-    goal: input.goal,
-    preparedAdaptation: input.preparedAdaptation,
+    ...(input.productReferencePath === undefined ? {} : { productReferencePath: input.productReferencePath }),
+    ...(input.videoAroll === undefined ? {} : { videoAroll: input.videoAroll }),
+    ...(input.brief === undefined ? {} : { brief: input.brief }),
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.preparedAdaptation === undefined ? {} : { preparedAdaptation: input.preparedAdaptation }),
   });
 }

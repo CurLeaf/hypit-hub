@@ -11,6 +11,7 @@ import type {
   OfficialPathCheckView,
 } from "../shared.js";
 import { formatTime } from "../shared.js";
+import { isCliCheckInvocationError } from "../scaffold-check.js";
 
 type TabId = "overview" | "timeline" | "insight" | "brief" | "transcript" | "create" | "result";
 
@@ -27,7 +28,9 @@ let previewMode: "reference" | "output" = "reference";
 // 可选：仅当用户明确要求改编时才填写
 let replicateNotes = "";
 const speechMode: "tts" = "tts";
-const videoAroll = true;
+let videoAroll = true;
+let formatOverride = "";
+let defaultVideoLoading = false;
 let referenceUploading = false;
 let referenceUploadError: string | undefined;
 let officialPathChecks: readonly OfficialPathCheckView[] | undefined;
@@ -166,8 +169,11 @@ function summarizeBuildFailure(raw: string): string {
   if (/HTTP 500|unexpected EOF|read_response_body_failed/iu.test(text)) {
     return `图片生成 API 网关异常${sceneHint}。通常是中转服务不稳定或模型不可用，请稍后重试或检查 gateway 配置。`;
   }
+  if (/\/videos returned HTTP 404|path":"\/api\/minimax\/videos"/iu.test(text)) {
+    return "视频接口 404：请求打到了网关不存在的 POST /videos。MiniMax H3 应走 V2 `/v2/video_generation`。这不是图片模型映射问题。";
+  }
   if (/\/files\b.*404|\/api\/minimax\/files/iu.test(text)) {
-    return `MiniMax 网关不支持文件上传（/files 404）${sceneHint}。生成口播需上传参考图与音色，请更换支持 /files 的 H3 网关。`;
+    return `MiniMax 网关不支持文件上传（/files 404）${sceneHint}。参考素材应走 S3 公有 OSS（gateway.minimax.referenceUpload=s3）。`;
   }
   if (/HTTP 404|not found for API|NOT_FOUND/iu.test(text)) {
     return `图片模型未找到或网关不支持该模型${sceneHint}。请检查 hypit.runtime.json 的 models 映射与 baseUrl。`;
@@ -183,6 +189,12 @@ function summarizeBuildFailure(raw: string): string {
   }
   if (/ECONNREFUSED|fetch failed|无法连接/iu.test(text)) {
     return `无法连接 Runtime 或网关${sceneHint}。请先运行 hypit runtime up。`;
+  }
+  if (/cannot resolve product-reference/iu.test(text)) {
+    return "参考图引用无法解析。本地 asset:Image 发布的是 product-reference，不是 product-reference.image。";
+  }
+  if (/场景 prompt 生成不完整/u.test(text)) {
+    return "场景画面提示词生成不完整。通常是模型把段落键写成 scene-1，而工程需要 segment-1。请再试一次一键复刻。";
   }
   if (sceneMatch !== null) return `生成场景图 ${sceneMatch[1]} 失败，请查看下方完整错误。`;
   return "视频生成失败，请查看下方完整错误信息。";
@@ -362,6 +374,20 @@ function renderSidebar(): HTMLElement {
   sidebar.append(steps);
 
   sidebar.append(el("div", "panel-title", "导入视频"));
+  const defaultField = el("div", "field");
+  const defaultBtn = el("button", "btn", defaultVideoLoading ? "正在载入默认视频…" : "使用默认视频") as HTMLButtonElement;
+  const defaultVideoUrl = config?.defaultVideoUrl;
+  defaultBtn.disabled = defaultVideoUrl === undefined || defaultVideoLoading || session.job?.status === "running";
+  defaultBtn.addEventListener("click", () => void useDefaultVideo());
+  defaultField.append(el("label", undefined, "默认 origin 视频"), defaultBtn);
+  if (defaultVideoUrl !== undefined) {
+    defaultField.append(el("p", "uploaded-name", config?.defaultVideoName ?? "origin.mp4"));
+    defaultField.append(el("p", "default-video-url", defaultVideoUrl));
+  } else {
+    defaultField.append(el("p", "uploaded-name", "未配置。请先运行 pnpm upload:origin"));
+  }
+  sidebar.append(defaultField);
+
   const uploadField = el("div", "field");
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -371,7 +397,12 @@ function renderSidebar(): HTMLElement {
     if (file !== undefined) void uploadFile(file);
   });
   uploadField.append(el("label", undefined, "上传文件"), fileInput);
-  if (session.videoName !== undefined) uploadField.append(el("p", "uploaded-name", `已导入：${session.videoName}`));
+  if (session.videoName !== undefined) {
+    uploadField.append(el("p", "uploaded-name", `已导入：${session.videoName}`));
+  }
+  if (session.videoUrl !== undefined) {
+    uploadField.append(el("p", "default-video-url", session.videoUrl));
+  }
   sidebar.append(uploadField);
 
   const langField = el("div", "field");
@@ -421,8 +452,10 @@ function renderCenter(): HTMLElement {
   const shell = el("div", "player-shell");
 
   const hasOutput = session.build?.outputVideoPath !== undefined;
-  const videoPath = previewMode === "output" && hasOutput ? session.build?.outputVideoPath : session.videoPath;
-  const url = mediaUrl(videoPath);
+  const showingOutput = previewMode === "output" && hasOutput;
+  const url = showingOutput
+    ? mediaUrl(session.build?.outputVideoPath)
+    : (session.videoUrl ?? mediaUrl(session.videoPath));
 
   if (hasOutput) {
     const toggle = el("div", "preview-toggle");
@@ -441,6 +474,14 @@ function renderCenter(): HTMLElement {
     video.src = url;
     video.controls = true;
     video.playsInline = true;
+    if (!showingOutput && session.videoUrl !== undefined) {
+      video.addEventListener("error", () => {
+        const fallback = mediaUrl(session.videoPath);
+        if (fallback === undefined || video.dataset.localFallback === "1") return;
+        video.dataset.localFallback = "1";
+        video.src = fallback;
+      });
+    }
     video.addEventListener("timeupdate", () => { currentTime = video.currentTime; highlightActiveWord(); });
     shell.append(video);
   }
@@ -596,7 +637,7 @@ function renderMediaPreview(url: string | undefined, kind: "audio" | "video"): H
   const media = document.createElement(kind);
   media.className = kind === "audio" ? "media-preview audio-preview" : "media-preview result-video";
   media.controls = true;
-  media.playsInline = true;
+  if (media instanceof HTMLVideoElement) media.playsInline = true;
   media.src = url;
   return media;
 }
@@ -1093,9 +1134,13 @@ function renderCreate(): HTMLElement {
     el("p", undefined, `目录：${session.scaffold.productionDir}`),
     el("p", undefined, `Run：${session.scaffold.runPath}`),
   );
-  if (session.scaffold.checkOk === false) {
+  if (session.scaffold.checkOk === false && !isCliCheckInvocationError(session.scaffold.checkSummary)) {
     card.append(el("div", "status error", `工程校验：${session.scaffold.checkSummary ?? "未通过"}`));
-  } else if (session.scaffold.checkSummary !== undefined && session.scaffold.checkSummary.length > 0) {
+  } else if (
+    session.scaffold.checkSummary !== undefined
+    && session.scaffold.checkSummary.length > 0
+    && !isCliCheckInvocationError(session.scaffold.checkSummary)
+  ) {
     card.append(el("p", "build-meta", `校验：${session.scaffold.checkSummary.split("\n")[0]}`));
   }
   wrap.append(card);
@@ -1187,7 +1232,7 @@ function seekTo(time: number): void {
 }
 
 function highlightActiveWord(): void {
-  for (const node of document.querySelectorAll<HTMLElement>(".word")) {
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>(".word"))) {
     const start = Number(node.dataset.start);
     const end = Number(node.dataset.end);
     node.classList.toggle("active", Number.isFinite(start) && Number.isFinite(end) && currentTime >= start && currentTime < end);
@@ -1221,6 +1266,21 @@ async function uploadFile(file: File): Promise<void> {
     session = { ...session, job: { id: "upload", status: "complete" } };
   } catch (error) {
     session = { ...session, job: { id: "upload", status: "error", error: error instanceof Error ? error.message : String(error) } };
+  }
+  render();
+}
+
+async function useDefaultVideo(): Promise<void> {
+  defaultVideoLoading = true;
+  render();
+  try {
+    session = await api<AnalysisSessionView>("/__analysis/use-default-video", { method: "POST" });
+    session = { ...session, job: { id: "upload", status: "complete" } };
+    previewMode = "reference";
+  } catch (error) {
+    session = { ...session, job: { id: "upload", status: "error", error: error instanceof Error ? error.message : String(error) } };
+  } finally {
+    defaultVideoLoading = false;
   }
   render();
 }
@@ -1306,6 +1366,7 @@ async function ensureReplicationReady(forBuild = false): Promise<boolean> {
       render();
       return false;
     }
+    clearCreateActionPending();
     return true;
   } catch (error) {
     clearCreateActionPending();
@@ -1339,7 +1400,19 @@ async function uploadReferenceFile(file: File, input?: HTMLInputElement): Promis
 async function runBuild(): Promise<void> {
   activeTab = "create";
   clearCompletionNotice();
-  if (!(await ensureReplicationReady(true))) return;
+  const previousBuild = session.build;
+  const previousJob = session.workflowJob;
+  session = {
+    ...session,
+    build: { status: "planning", phase: "检查生成条件…" },
+    workflowJob: { id: "build", status: "running", phase: "检查生成条件…" },
+  };
+  render();
+  if (!(await ensureReplicationReady(true))) {
+    session = { ...session, build: previousBuild, workflowJob: previousJob };
+    render();
+    return;
+  }
   setCreateActionPending("build", "正在发送视频生成请求…");
   render();
   try {

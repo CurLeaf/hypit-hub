@@ -124,7 +124,7 @@ export async function generateRankingReplicaProject(input: {
     insight,
     treatment,
     formatId: "ranking",
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scenes: baseScenes,
   });
   const scenes = buildScenes(session, insight, promptMap);
@@ -138,7 +138,7 @@ export async function generateRankingReplicaProject(input: {
     mode: input.speechMode,
     session,
     destination: audioPath,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scriptText: spokenText,
     extractReferenceAudio,
   });

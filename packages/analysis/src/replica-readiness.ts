@@ -11,6 +11,7 @@ import {
   loadOfficialGateway,
 } from "./official-replica.js";
 import { loadRuntimeCapabilities } from "./runtime-capabilities.js";
+import { shouldBlockBuildOnScaffoldCheck } from "./scaffold-check.js";
 
 export type ReplicaReadiness = OfficialPathReportView & {
   readonly issues: readonly string[];
@@ -67,9 +68,9 @@ export async function checkReplicationReadiness(
     : undefined;
   const report = await buildOfficialPathReport({
     session,
-    runtimePath,
-    forBuild: options?.forBuild,
-    svmlPath,
+    ...(runtimePath === undefined ? {} : { runtimePath }),
+    ...(options?.forBuild === undefined ? {} : { forBuild: options.forBuild }),
+    ...(svmlPath === undefined ? {} : { svmlPath }),
   });
   const issues = report.checks.filter((check) => !check.ok).map((check) => `${check.label}：${check.detail}`);
 
@@ -80,19 +81,20 @@ export async function checkReplicationReadiness(
     const assetsDir = join(scaffold.productionDir, "assets");
     const useVideoAroll = session.videoAroll ?? true;
     const capabilities = await loadRuntimeCapabilities(runtimePath);
-    const hasAdaptedSpeech = await fileExists(join(assetsDir, "generated-speech.wav"));
-    const hasVoiceSample = await fileExists(join(assetsDir, "voice-reference.wav"));
-    if (!hasAdaptedSpeech && !hasVoiceSample) {
-      issues.push("工程内缺少改编配音素材（generated-speech.wav 或 voice-reference.wav），请重新点击「一键复刻」");
-    }
-    if (useVideoAroll && !capabilities.fishSpeech && !(await fileExists(join(assetsDir, "voice-reference.wav")))) {
-      issues.push("工程内缺少 H3 音色样本 voice-reference.wav，请重新点击「一键复刻」");
+    const hasGeneratedSpeech = await fileExists(join(assetsDir, "generated-speech.wav"));
+    const hasVoiceReference = await fileExists(join(assetsDir, "voice-reference.wav"));
+    if (useVideoAroll) {
+      if (!capabilities.fishSpeech && !hasVoiceReference) {
+        issues.push("工程内缺少 H3 音色样本 voice-reference.wav，请重新点击「一键复刻」");
+      }
+    } else if (!hasGeneratedSpeech) {
+      issues.push("工程内缺少配音素材 generated-speech.wav，请重新点击「一键复刻」");
     }
     const productAssets = await listProductReferenceAssets(assetsDir);
     if (productAssets.length === 0) {
       issues.push("工程内缺少参考图素材 product-reference.*，请重新点击「一键复刻」");
     }
-    if (scaffold.checkOk === false) {
+    if (shouldBlockBuildOnScaffoldCheck(scaffold.checkOk, scaffold.checkSummary)) {
       issues.push(`工程校验未通过：${scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
     }
   }

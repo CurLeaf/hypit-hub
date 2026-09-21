@@ -1,5 +1,6 @@
 import type { AnalysisSessionView, TreatmentView, ViralInsightView } from "./shared.js";
-import { chatCompletion, loadChatGateway } from "./llm.js";
+import { chatCompletion, extractJsonObject, loadChatGateway } from "./llm.js";
+import { isDefaultScenePrompt } from "./official-replica.js";
 
 export type ScenePlan = {
   readonly id: string;
@@ -73,6 +74,32 @@ export function scriptDialogue(scenes: readonly ScenePlan[]): string {
   return parts.join(" || ").trim();
 }
 
+export function assignScenePrompts(
+  scenes: readonly ScenePlan[],
+  parsed: Record<string, unknown>,
+): Map<string, string> {
+  const result = new Map<string, string>();
+  const stringValues = Object.values(parsed).filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  for (const [index, scene] of scenes.entries()) {
+    const candidates = [
+      parsed[scene.momentId],
+      parsed[scene.id],
+      parsed[`scene-${index + 1}`],
+      parsed[`segment-${index + 1}`],
+    ];
+    const matched = candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+    if (matched !== undefined) {
+      result.set(scene.momentId, matched.trim());
+    }
+  }
+  if (scenes.length === 1 && !result.has(scenes[0]!.momentId) && stringValues.length === 1) {
+    result.set(scenes[0]!.momentId, stringValues[0]!.trim());
+  }
+  return result;
+}
+
 export async function buildScenePrompts(input: {
   readonly session: AnalysisSessionView;
   readonly insight: ViralInsightView;
@@ -83,20 +110,20 @@ export async function buildScenePrompts(input: {
   readonly requireSuccess?: boolean;
 }): Promise<Map<string, string>> {
   const gateway = await loadChatGateway(input.runtimePath, input.session.workspaceRoot);
-  const result = new Map<string, string>();
   if (gateway === undefined) {
     if (input.requireSuccess === true) {
       throw new Error("缺少对话模型配置，无法生成官方 gpt-image 场景 prompt");
     }
-    return result;
+    return new Map();
   }
-  const sceneIds = input.scenes.map((scene) => scene.momentId);
   try {
+    const ids = input.scenes.map((scene) => scene.momentId).join("、");
     const content = await chatCompletion({
       gateway,
       system: [
         "你是视频美术指导。根据参考片分析与导演 Treatment，为每个场景写 gpt-image 英文 prompt。",
-        "输出严格 JSON 对象：键必须与输入 scenes 的 id 完全一致（" + sceneIds.join("、") + "），值为 prompt 字符串。",
+        "输出严格 JSON 对象：键必须与输入 scenes[].id 完全一致（例如 segment-1 或 scene-1），值为 prompt 字符串。",
+        "不要改写成 scene-1、scene-2，除非输入 id 本来就是这些键。本次键名：" + ids + "。",
         "要求：竖屏 9:16、无可读文字、具体视觉锚点、符合 " + input.formatId + " 格式气质。",
       ].join("\n"),
       user: JSON.stringify({
@@ -111,38 +138,22 @@ export async function buildScenePrompts(input: {
         })),
       }, null, 2),
     });
-    const start = content.indexOf("{");
-    const end = content.lastIndexOf("}");
-    if (start < 0 || end <= start) {
-      if (input.requireSuccess === true) throw new Error("场景 prompt 模型未返回有效 JSON");
-      return result;
-    }
-    const parsed = JSON.parse(content.slice(start, end + 1)) as Record<string, unknown>;
-    for (const scene of input.scenes) {
-      const value = parsed[scene.momentId];
-      if (typeof value === "string" && value.trim().length > 0) {
-        result.set(scene.momentId, value.trim());
-      }
-    }
+    const assigned = assignScenePrompts(input.scenes, extractJsonObject(content));
     if (input.requireSuccess === true) {
-      const missing = input.scenes.filter((scene) => !result.has(scene.momentId));
+      const missing = input.scenes.filter((scene) => !assigned.has(scene.momentId));
       if (missing.length > 0) {
         throw new Error("场景 prompt 生成不完整：缺少 " + missing.map((scene) => scene.momentId).join("、"));
       }
       for (const scene of input.scenes) {
-        const prompt = result.get(scene.momentId);
+        const prompt = assigned.get(scene.momentId);
         if (prompt !== undefined && isDefaultScenePrompt(prompt)) {
           throw new Error(`场景 ${scene.momentId} 仍使用默认 prompt，请检查对话模型输出`);
         }
       }
     }
+    return assigned;
   } catch (error) {
     if (input.requireSuccess === true) throw error;
+    return new Map();
   }
-  return result;
-}
-
-function isDefaultScenePrompt(prompt: string): boolean {
-  return prompt.includes("Chinese product promo scene")
-    || prompt.startsWith("Vertical 9:16 short-form social video frame, cinematic lighting, clean composition.");
 }

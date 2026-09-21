@@ -1,13 +1,13 @@
 import { Buffer } from "node:buffer";
 
 import { canonicalize } from "@hypit/endpoint-kit";
-import type { EndpointInvocationContext, EndpointRequest, ImmediateEndpointHandler } from "@hypit/endpoint-kit";
+import type { EndpointFulfillment, EndpointInvocationContext, EndpointRequest, ImmediateEndpointHandler } from "@hypit/endpoint-kit";
 import { compileWireRequest, generationTypes, sealGeneratedImageSet } from "@hypit/generation";
 import type { GenerationRequest } from "@hypit/generation";
 
 import type { OpenAiCompatibleClient } from "./client.js";
 import { gptImage2Mapping } from "./mappings.js";
-import { uploadArtifactUrl } from "./upload.js";
+import type { ResolveArtifactUrl } from "./upload.js";
 
 const supportedRatios = new Set(["1:1", "9:16", "16:9", "3:2", "2:3"]);
 
@@ -49,6 +49,7 @@ export function imageSupport(request: EndpointRequest) {
 export function createImageHandler(
   client: OpenAiCompatibleClient,
   modelFor: (request: EndpointRequest) => string,
+  resolveArtifactUrl: ResolveArtifactUrl,
 ): ImmediateEndpointHandler {
   return async (context: EndpointInvocationContext) => {
     const supported = imageSupport(context.need);
@@ -80,7 +81,7 @@ export function createImageHandler(
     }
 
     const wire = await compileWireRequest(gptImage2Mapping, request, async (artifact) =>
-      await uploadArtifactUrl(client, secret, artifact, context.resources));
+      await resolveArtifactUrl(artifact, context.resources, secret));
     const body = {
       model: modelFor(context.need),
       ...(wire.input as Record<string, unknown>),
@@ -100,7 +101,7 @@ async function packageImageResponse(
   client: OpenAiCompatibleClient,
   response: Record<string, unknown>,
   context: EndpointInvocationContext,
-) {
+): Promise<EndpointFulfillment> {
   const data = response.data;
   if (!Array.isArray(data) || data.length === 0) throw new Error("OpenAI-compatible image response contained no data");
   const [first] = data;

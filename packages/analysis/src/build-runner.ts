@@ -28,15 +28,11 @@ function hypitLauncher(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../bin/hypit.mjs");
 }
 
-export function buildHypitInvocationArgs(command: readonly string[], workspaceRoot: string): readonly string[] {
-  return [...command, "--workspace", workspaceRoot, "--json"];
-}
-
 async function runHypit(args: readonly string[], workspaceRoot: string): Promise<string> {
   await loadWorkspaceEnv(workspaceRoot);
   const launcher = hypitLauncher();
   try {
-    const { stdout } = await execFileAsync(process.execPath, [launcher, ...buildHypitInvocationArgs(args, workspaceRoot)], {
+    const { stdout } = await execFileAsync(process.execPath, [launcher, ...args, "--workspace", workspaceRoot, "--json"], {
       cwd: workspaceRoot,
       env: process.env,
       maxBuffer: 64 * 1024 * 1024,
@@ -150,15 +146,25 @@ export async function exportBuildVideo(workspaceRoot: string, buildId: string, d
   return destination;
 }
 
-export async function ensureRuntimeUp(workspaceRoot: string, runtimePath?: string): Promise<void> {
-  const args = ["runtime", "up", ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
+export async function ensureRuntimeUp(
+  workspaceRoot: string,
+  runtimePath?: string,
+  endpoints: readonly string[] = [],
+): Promise<void> {
+  const args = [
+    "runtime", "up",
+    ...(runtimePath === undefined ? [] : ["--runtime", runtimePath]),
+    ...endpoints.flatMap((endpoint) => ["--endpoint", endpoint]),
+  ];
   await runHypit(args, workspaceRoot);
 }
 
 export async function runCheck(
   workspaceRoot: string,
   runPath: string,
+  _runtimePath?: string,
 ): Promise<{ readonly ok: boolean; readonly summary: string; readonly raw: unknown }> {
+  // `hypit check` is a local Author/Run static check; `--runtime` is rejected.
   const args = ["check", runPath];
   const raw = parseJsonStdout(await runHypit(args, workspaceRoot)) as {
     ok?: boolean;

@@ -68,13 +68,11 @@ function brollDuringRef(
 
 function scenesForBroll(
   scenes: readonly ScenePlan[],
-  useVideoAroll: boolean,
   useOfficialSpeaker: boolean,
 ): readonly ScenePlan[] {
   if (useOfficialSpeaker) {
     return scenes.filter((scene) => sceneHasSpeech(scene));
   }
-  if (useVideoAroll) return scenes.slice(1);
   return scenes.slice(1);
 }
 
@@ -85,7 +83,8 @@ function scenesForStillImages(
   hasProductReference: boolean,
 ): readonly ScenePlan[] {
   if (useOfficialSpeaker) {
-    return scenes.filter((scene) => sceneHasSpeech(scene));
+    // H3 takes own the picture; stills are unused on the official timeline.
+    return [];
   }
   if (useVideoAroll || hasProductReference) return scenes.slice(1);
   return scenes;
@@ -170,11 +169,11 @@ export async function generateUgcReplicaProject(input: {
       adaptedScenes = await adaptScenesForProduct({
         session,
         insight,
-        treatment,
-        brief: input.brief,
+        ...(treatment === undefined ? {} : { treatment }),
+        ...(input.brief === undefined ? {} : { brief: input.brief }),
         scenes: baseScenes,
-        goal: input.goal,
-        runtimePath: input.runtimePath,
+        ...(input.goal === undefined ? {} : { goal: input.goal }),
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         requireSuccess: true,
       });
     }
@@ -182,9 +181,9 @@ export async function generateUgcReplicaProject(input: {
   const promptMap = await buildScenePrompts({
     session,
     insight,
-    treatment,
+    ...(treatment === undefined ? {} : { treatment }),
     formatId,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     scenes: adaptedScenes,
     requireSuccess: hasProductReference,
   });
@@ -210,15 +209,16 @@ export async function generateUgcReplicaProject(input: {
         mode: speechMode,
         session,
         destination: audioPath,
-        runtimePath: input.runtimePath,
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         scriptText: spokenText,
         extractReferenceAudio,
       });
     }
   }
   const language = session.transcript?.language ?? "zh";
-  const width = Math.max(540, session.probe.width);
-  const height = Math.max(960, session.probe.height);
+  const portraitUgc = hasProductReference;
+  const width = portraitUgc ? 1080 : Math.max(540, session.probe.width);
+  const height = portraitUgc ? 1920 : Math.max(960, session.probe.height);
   const durationSec = Math.ceil(session.probe.duration);
 
   let productAssetBlock = "";
@@ -247,7 +247,7 @@ export async function generateUgcReplicaProject(input: {
   </gpt:Image>`;
   }).join("\n");
 
-  const brollScenes = scenesForBroll(scenes, useVideoAroll, useOfficialSpeaker);
+  const brollScenes = scenesForBroll(scenes, useOfficialSpeaker);
   const brollItems = useOfficialSpeaker
     ? ""
     : brollScenes.map((scene) => `
@@ -281,16 +281,13 @@ export async function generateUgcReplicaProject(input: {
         mode: "tts",
         session,
         destination: speechSource,
-        runtimePath: input.runtimePath,
+        ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         scriptText: spokenText,
         extractReferenceAudio,
       });
       await extractVoiceReferenceSample(speechSource, voiceSamplePath);
     }
     const voiceRel = relativeAssetPath(layout.authorsDir, voiceSamplePath);
-    if (prepared?.generatedSpeechPath !== undefined) {
-      await copyFile(prepared.generatedSpeechPath, join(assetsDir, "generated-speech.wav"));
-    }
     const speakingScenes = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
     const official = buildOfficialSpeakerSvml({
       scenes,
@@ -299,7 +296,7 @@ export async function generateUgcReplicaProject(input: {
       voiceSampleText: speakingScenes[0]?.text ?? spokenText.slice(0, 120),
       voiceCastingDirection:
         "A clear, engaging Chinese short-form product presenter voice: bright, confident, conversational, with natural emphasis for social-video promo delivery.",
-      voiceAssetRel: capabilities.fishSpeech ? undefined : voiceRel,
+      ...(capabilities.fishSpeech ? {} : { voiceAssetRel: voiceRel }),
       productImageRef: "product-reference",
     });
     officialSpeakerImports = official.imports;
@@ -310,34 +307,6 @@ export async function generateUgcReplicaProject(input: {
     heroVisualItems = official.visualItems;
     speechSemanticBlock = "";
     speechNormalizeBlock = "";
-  } else if (useVideoAroll) {
-    const voiceSamplePath = join(assetsDir, "voice-reference.wav");
-    if (prepared?.voiceReferencePath !== undefined) {
-      await copyFile(prepared.voiceReferencePath, voiceSamplePath);
-    } else if (prepared?.generatedSpeechPath !== undefined) {
-      await extractVoiceReferenceSample(prepared.generatedSpeechPath, voiceSamplePath);
-    } else {
-      await extractVoiceReferenceSample(audioPath, voiceSamplePath);
-    }
-    const voiceRel = relativeAssetPath(layout.authorsDir, voiceSamplePath);
-    const dialogueForPrompt = spokenText.slice(0, 800).replace(/[<>&]/gu, "");
-    voiceBlock = `\n  <asset:Audio id="voice-reference" src="${voiceRel}"/>\n`;
-    const videoDuration = Math.min(15, Math.max(4, durationSec));
-    videoArollGenerationBlock = `
-  <text:Value id="speaker-prompt">Create a realistic vertical phone-shot talking-head video. The reference image shows the visible speaker and scene. The reference audio supplies voice timbre. Deliver the supplied script with clear lip-sync. Dialogue: ${dialogueForPrompt}. PERFORMANCE: engaged product explainer with natural emphasis matching a short-form social promo.</text:Value>
-  <h3:ReferenceVideo id="speaker-take" prompt={speaker-prompt} duration="${videoDuration}"
-    resolution="768P" aspect-ratio="9:16">
-    <h3:Reference image={product-reference}/>
-    <h3:Reference audio={voice-reference}/>
-  </h3:ReferenceVideo>
-  <pipeline:Normalize id="speaker-media" source={speaker-take.video}
-    video="primary-moving" audio="default" span-authority="video" clock={clock}/>`;
-    heroVisualItems = `    <media-track:Item id="hero" media={speaker-media.media}
-      during={story.segment.main} frame={speech-frame} appearance={recipes.media.hero}/>`;
-    speechNormalizeBlock = `  <pipeline:Normalize id="speech-media" source={speaker-media.media}
-    video="none" audio="default" span-authority="audio" clock={clock}/>`;
-    speechSemanticBlock = `  <whisperx:SemanticTake id="speech-semantic" narrative={story}
-    segment={story.segment.main} media={speech-media.media} language="${language}"/>`;
   } else {
     heroVisualItems = `    <media-track:Item id="hero" image={${heroId}.image}
       extent={scene-extent} during={story.segment.main}
@@ -348,6 +317,7 @@ export async function generateUgcReplicaProject(input: {
 
   const videoArollImport = useVideoAroll ? `\n  <import as="h3" from="@hypit/minimax-h3@1"/>${officialSpeakerImports}` : "";
   const phoneUgcImport = !hasProductReference ? `\n  <import as="ugc" source="@hypit/gpt-image-kits/phone-ugc-v1"/>` : "";
+  const gptImport = sceneImageBlocks.length > 0 ? `\n  <import as="gpt" from="@hypit/gpt-image@1"/>` : "";
   const referenceAudioBlock = needsReferenceAudioAsset
     ? `\n  <asset:Audio id="reference-audio" src="${audioRel}"/>`
     : "";
@@ -356,8 +326,7 @@ export async function generateUgcReplicaProject(input: {
 <svml>
   <import from="@hypit/script@1"/>
   <import as="text" from="@hypit/text@1"/>
-  <import as="asset" from="@hypit/media@1"/>
-  <import as="gpt" from="@hypit/gpt-image@1"/>${phoneUgcImport}${videoArollImport}
+  <import as="asset" from="@hypit/media@1"/>${gptImport}${phoneUgcImport}${videoArollImport}
   <import as="pipeline" from="@hypit/media-pipeline@1"/>
   <import as="whisperx" from="@hypit/whisperx@1"/>
   <import as="time" from="@hypit/timeline-author@1"/>

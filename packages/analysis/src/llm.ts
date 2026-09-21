@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
+import { resolveGatewayText } from "./runtime-text.js";
+
 export type ChatGatewayConfig = {
   readonly baseUrl: string;
   readonly apiKeyEnv: string;
@@ -10,7 +12,32 @@ export type ChatGatewayConfig = {
   readonly requestTimeoutMs: number;
 };
 
-export async function loadChatGateway(runtimePath: string | undefined, workspaceRoot: string): Promise<ChatGatewayConfig | undefined> {
+export function chatGatewayFromConfig(
+  gateway: Record<string, unknown>,
+  env: NodeJS.Dict<string> = process.env,
+): ChatGatewayConfig | undefined {
+  const baseUrl = resolveGatewayText(gateway.baseUrl, env);
+  const apiKey = gateway.apiKey as { key?: string } | undefined;
+  const apiKeyEnv = apiKey?.key?.trim() || "OPENAI_API_KEY";
+  if (baseUrl === undefined) return undefined;
+  const model = env.HYPIT_CHAT_MODEL?.trim()
+    || (typeof gateway.chatModel === "string" ? gateway.chatModel : undefined)
+    || "deepseek-v4-flash";
+  const ttsModel = env.HYPIT_TTS_MODEL?.trim()
+    || (typeof gateway.ttsModel === "string" ? gateway.ttsModel : undefined)
+    || "FunAudioLLM/CosyVoice2-0.5B";
+  const ttsVoice = env.HYPIT_TTS_VOICE?.trim()
+    || (typeof gateway.ttsVoice === "string" ? gateway.ttsVoice : undefined)
+    || "FunAudioLLM/CosyVoice2-0.5B:alex";
+  const requestTimeoutMs = typeof gateway.requestTimeoutMs === "number" ? gateway.requestTimeoutMs : 120_000;
+  return { baseUrl, apiKeyEnv, model, ttsModel, ttsVoice, requestTimeoutMs };
+}
+
+export async function loadChatGateway(
+  runtimePath: string | undefined,
+  workspaceRoot: string,
+  env: NodeJS.Dict<string> = process.env,
+): Promise<ChatGatewayConfig | undefined> {
   if (runtimePath === undefined) return undefined;
   try {
     const raw = JSON.parse(await readFile(resolve(runtimePath), "utf8")) as {
@@ -18,21 +45,7 @@ export async function loadChatGateway(runtimePath: string | undefined, workspace
     };
     const gateway = raw.endpoints?.["gateway.default"]?.config;
     if (gateway === undefined) return undefined;
-    const baseUrl = typeof gateway.baseUrl === "string" ? gateway.baseUrl : undefined;
-    const apiKey = gateway.apiKey as { key?: string } | undefined;
-    const apiKeyEnv = apiKey?.key ?? "OPENAI_API_KEY";
-    if (baseUrl === undefined) return undefined;
-    const model = process.env.HYPIT_CHAT_MODEL?.trim()
-      || (typeof gateway.chatModel === "string" ? gateway.chatModel : undefined)
-      || "deepseek-v4-flash";
-    const ttsModel = process.env.HYPIT_TTS_MODEL?.trim()
-      || (typeof gateway.ttsModel === "string" ? gateway.ttsModel : undefined)
-      || "FunAudioLLM/CosyVoice2-0.5B";
-    const ttsVoice = process.env.HYPIT_TTS_VOICE?.trim()
-      || (typeof gateway.ttsVoice === "string" ? gateway.ttsVoice : undefined)
-      || "FunAudioLLM/CosyVoice2-0.5B:alex";
-    const requestTimeoutMs = typeof gateway.requestTimeoutMs === "number" ? gateway.requestTimeoutMs : 120_000;
-    return { baseUrl, apiKeyEnv, model, ttsModel, ttsVoice, requestTimeoutMs };
+    return chatGatewayFromConfig(gateway, env);
   } catch {
     return undefined;
   }

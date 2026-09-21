@@ -5,37 +5,33 @@ import type {
   EndpointRequest,
   EndpointStartContext,
 } from "@hypit/endpoint-kit";
-import { compileWireRequest, generationTypes, sealGeneratedVideoSet } from "@hypit/generation";
-import type { BlobRef, GenerationRequest } from "@hypit/generation";
+import { compileWireRequest, sealGeneratedVideoSet } from "@hypit/generation";
+import type { GenerationRequest } from "@hypit/generation";
+import type { BlobRef } from "@hypit/protocol";
 
-import type { OpenAiCompatibleClient } from "./client.js";
-import { createMinimaxV2VideoEndpoint } from "./minimax-v2.js";
-import { mappingForCapability, openAiCompatibleMappings } from "./mappings.js";
-import { uploadArtifactUrl } from "./upload.js";
+import type { OpenAiCompatibleClient, VideoAdapter } from "./client.js";
+import { routePath } from "./client.js";
+import { mappingForCapability } from "./mappings.js";
+import {
+  compileMinimaxV2Request,
+  defaultMinimaxV2VideoRoutes,
+  videoJobError,
+  videoJobId,
+  videoJobStatus,
+  videoOutputUrl,
+} from "./minimax-v2.js";
+import type { ResolveArtifactUrl } from "./upload.js";
 
 type VideoHandle = {
   readonly contract: "hypit.openai-compatible-video@1";
   readonly id: string;
-  readonly adapter: "openai-videos" | "async-tasks";
+  readonly adapter: VideoAdapter;
   readonly startedAt: number;
 };
 
 function object(value: unknown, subject: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`${subject} must be an object`);
   return value as Record<string, unknown>;
-}
-
-function text(value: unknown, subject: string): string {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${subject} must be non-empty text`);
-  return value;
-}
-
-function jobId(response: Record<string, unknown>): string {
-  return text(response.id ?? response.job_id ?? response.task_id, "remote video job id");
-}
-
-function jobStatus(response: Record<string, unknown>): string {
-  return String(response.status ?? response.state ?? "unknown");
 }
 
 function isReady(status: string): boolean {
@@ -48,6 +44,34 @@ function isPending(status: string): boolean {
 
 function isFailed(status: string): boolean {
   return status === "failed" || status === "cancelled" || status === "queue_expired";
+}
+
+function isMinimaxH3(capability: EndpointRequest["capability"]): boolean {
+  return capability.module.name === "@hypit/minimax-h3" && capability.name === "minimax-h3";
+}
+
+function adapterFor(capability: EndpointRequest["capability"], configured: VideoAdapter): VideoAdapter {
+  return isMinimaxH3(capability) ? "minimax-v2" : configured;
+}
+
+function submitPath(client: OpenAiCompatibleClient, adapter: VideoAdapter): string {
+  if (adapter === "minimax-v2") {
+    return client.routes.videoSubmit.includes("video_generation")
+      ? client.routes.videoSubmit
+      : defaultMinimaxV2VideoRoutes.videoSubmit;
+  }
+  return client.routes.videoSubmit;
+}
+
+function statusPath(client: OpenAiCompatibleClient, adapter: VideoAdapter, id: string): string {
+  if (adapter === "async-tasks") return `/tasks/${encodeURIComponent(id)}`;
+  if (adapter === "minimax-v2") {
+    const template = client.routes.videoStatus.includes("video_generation")
+      ? client.routes.videoStatus
+      : defaultMinimaxV2VideoRoutes.videoStatus;
+    return routePath(template, { id });
+  }
+  return routePath(client.routes.videoStatus, { id });
 }
 
 export function videoSupport(request: EndpointRequest, models: Readonly<Record<string, string>>) {
@@ -71,24 +95,18 @@ export function createVideoEndpoint(
   client: OpenAiCompatibleClient,
   models: Readonly<Record<string, string>>,
   options: {
-    readonly videoAdapter: "openai-videos" | "async-tasks" | "minimax-v2";
+    readonly videoAdapter: VideoAdapter;
     readonly pollIntervalMs: number;
     readonly operationTimeoutMs: number;
     readonly modelFor: (request: EndpointRequest) => string;
+    readonly resolveArtifactUrl: ResolveArtifactUrl;
   },
 ): AsyncEndpoint {
-  if (options.videoAdapter === "minimax-v2") {
-    return createMinimaxV2VideoEndpoint(client, {
-      pollIntervalMs: options.pollIntervalMs,
-      operationTimeoutMs: options.operationTimeoutMs,
-      modelFor: (context) => options.modelFor(context.need),
-    });
-  }
   const resolveArtifact = async (
     artifact: BlobRef,
     resources: EndpointStartContext["resources"],
     secret: string,
-  ): Promise<string> => await uploadArtifactUrl(client, secret, artifact, resources);
+  ): Promise<string> => await options.resolveArtifactUrl(artifact, resources, secret);
 
   return {
     async start(context: EndpointStartContext) {
@@ -97,31 +115,35 @@ export function createVideoEndpoint(
       const mapping = mappingForCapability(context.need.capability);
       if (mapping === undefined) throw new Error("Video mapping is unavailable");
       const secret = client.secret(context.credentials);
-      const compiled = await compileWireRequest(
-        mapping,
-        context.need.constraints as unknown as GenerationRequest,
-        async (artifact) => await resolveArtifact(artifact, context.resources, secret),
-      );
-      const body = {
-        model: options.modelFor(context.need),
-        ...(compiled.input as Record<string, unknown>),
-      };
-      const response = await client.json(client.routes.videoSubmit, secret, {
+      const generation = context.need.constraints as unknown as GenerationRequest;
+      const model = options.modelFor(context.need);
+      const resolve = async (artifact: BlobRef) => await resolveArtifact(artifact, context.resources, secret);
+      const adapter = adapterFor(context.need.capability, options.videoAdapter);
+      const body = adapter === "minimax-v2"
+        ? await compileMinimaxV2Request(generation, model, resolve)
+        : {
+          model,
+          ...(await compileWireRequest(mapping, generation, resolve)).input as Record<string, unknown>,
+        };
+      const response = await client.json(submitPath(client, adapter), secret, {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": context.operation },
         body: JSON.stringify(body),
       });
-      const status = jobStatus(response);
-      const id = jobId(response);
+      const status = videoJobStatus(response);
+      const id = videoJobId(response);
       const handle: VideoHandle = {
         contract: "hypit.openai-compatible-video@1",
         id,
-        adapter: options.videoAdapter,
+        adapter,
         startedAt: Date.now(),
       };
       const receipt = { id };
       await context.checkpoint?.({ handle: canonicalize(handle), receipt, ...(isReady(status) ? { remoteEnded: true as const } : {}) });
-      if (isFailed(status)) throw new Error(`OpenAI-compatible video submission failed with status ${status}`);
+      if (isFailed(status)) {
+        const detail = videoJobError(response);
+        throw new Error(`OpenAI-compatible video submission failed with status ${status}${detail === undefined ? "" : `: ${detail}`}`);
+      }
       return isReady(status)
         ? { status: "ready", handle: canonicalize(handle), receipt }
         : { ...wakeAfter(canonicalize(handle), options.pollIntervalMs, Date.now(), { phase: status }), receipt };
@@ -136,18 +158,12 @@ export function createVideoEndpoint(
         };
       }
       const secret = client.secret(context.credentials);
-      const path = client.routes.videoStatus.includes("{id}")
-        ? client.routes.videoStatus.replace("{id}", encodeURIComponent(handle.id))
-        : `${client.routes.videoStatus}/${encodeURIComponent(handle.id)}`;
-      const response = options.videoAdapter === "async-tasks"
-        ? await client.json(`/tasks/${encodeURIComponent(handle.id)}`, secret)
-        : await client.json(path, secret);
-      const status = jobStatus(response);
+      const response = await client.json(statusPath(client, handle.adapter, handle.id), secret);
+      const status = videoJobStatus(response);
       if (isPending(status)) return wakeAfter(canonicalize(handle), options.pollIntervalMs, Date.now(), { phase: status });
       if (isFailed(status)) {
-        const detail = [response.error, response.message, response.reason, response.detail]
-          .find((value) => typeof value === "string" && value.length > 0);
-        throw new Error(`OpenAI-compatible video failed${typeof detail === "string" ? `: ${detail}` : ""}`);
+        const detail = videoJobError(response);
+        throw new Error(`OpenAI-compatible video failed${detail === undefined ? "" : `: ${detail}`}`);
       }
       if (!isReady(status)) throw new Error(`OpenAI-compatible video returned unknown status ${status}`);
       return { status: "ready", handle: context.handle, receipt: { id: handle.id } };
@@ -155,18 +171,8 @@ export function createVideoEndpoint(
     async collect(context) {
       const handle = object(context.handle, "video handle") as unknown as VideoHandle;
       const secret = client.secret(context.credentials);
-      const path = options.videoAdapter === "async-tasks"
-        ? `/tasks/${encodeURIComponent(handle.id)}`
-        : client.routes.videoStatus.includes("{id}")
-          ? client.routes.videoStatus.replace("{id}", encodeURIComponent(handle.id))
-          : `${client.routes.videoStatus}/${encodeURIComponent(handle.id)}`;
-      const response = await client.json(path, secret);
-      const url = [
-        response.output_url,
-        response.url,
-        Array.isArray(response.assets) ? (response.assets[0] as Record<string, unknown> | undefined)?.url : undefined,
-        Array.isArray(response.data) ? (response.data[0] as Record<string, unknown> | undefined)?.url : undefined,
-      ].find((value) => typeof value === "string" && value.length > 0);
+      const response = await client.json(statusPath(client, handle.adapter, handle.id), secret);
+      const url = videoOutputUrl(response);
       if (typeof url !== "string") throw new Error("OpenAI-compatible video result did not include a download URL");
       const downloaded = await client.download(url);
       if (!downloaded.mediaType.startsWith("video/")) throw new Error("OpenAI-compatible video result was not video media");
@@ -183,10 +189,3 @@ export function createVideoEndpoint(
     },
   };
 }
-
-export const asyncVideoCapabilities = openAiCompatibleMappings
-  .filter((mapping) => mapping.result === "video")
-  .map((mapping) => ({
-    capability: mapping.capability,
-    returns: generationTypes.videoSet,
-  }));

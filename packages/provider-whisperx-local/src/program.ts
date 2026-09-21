@@ -8,7 +8,7 @@ import type {
   ManagedProgramCommand,
   ManagedProgramState,
 } from "@hypit/runtime-kit";
-import { pythonEnvironmentCommand } from "@hypit/runtime-host-node";
+import { pythonEnvironmentCommand, uvPythonEnvironment } from "@hypit/runtime-host-node";
 
 /**
  * WhisperX loads multi-gigabyte weights before it can answer, so it is a warm
@@ -128,7 +128,7 @@ export function localWhisperXProgram(options: LocalWhisperXProgramOptions): Mana
         commands: [{
           command: "uv",
           args: ["sync", "--project", localWhisperXManagedProject, "--frozen", "--no-editable"],
-          env: { UV_PROJECT_ENVIRONMENT: environment },
+          env: { UV_PROJECT_ENVIRONMENT: environment, ...uvPythonEnvironment() },
         }, {
           command: pythonEnvironmentCommand(environment, "hypit-whisperx-prepare"),
           args: ["--nltk-data", nltkData],

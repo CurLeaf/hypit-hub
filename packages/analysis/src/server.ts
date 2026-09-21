@@ -22,6 +22,7 @@ import {
   runFullAnalysis,
 } from "./engine.js";
 import { writeReferenceArchive } from "./reference-archive.js";
+import { DEFAULT_VIDEO_NAME, materializeDefaultVideo, resolveDefaultVideoUrl } from "./default-video.js";
 import { loadChatGateway } from "./llm.js";
 import type { AnalysisConfigView, AnalysisSessionView } from "./shared.js";
 import {
@@ -71,11 +72,15 @@ function analysisErrorMessage(error: unknown): string {
   if (/Headers Timeout Error|HeadersTimeoutError|timed out after/u.test(message)) {
     return "WhisperX 转写超时。CPU 首次推理较慢，请稍后重试；或在 Runtime Profile 中增大 whisperx.local 的 requestTimeoutMs。";
   }
+  if (code === "ECONNREFUSED"
+    || /connect ECONNREFUSED 127\.0\.0\.1:8765/u.test(message)
+    || /nothing is answering at http:\/\/127\.0\.0\.1:8765/u.test(message)) {
+    return "WhisperX 本地环境已安装，但 127.0.0.1:8765 上的服务未启动。请运行 hypit runtime up --endpoint whisperx.local。";
+  }
   if (message === "fetch failed"
-    || code === "ECONNREFUSED"
     || code === "ECONNRESET"
     || /connect ECONNREFUSED|connect ECONNRESET/u.test(message)) {
-    return "无法连接 WhisperX 本地服务。请运行 hypit runtime up。";
+    return "无法连接本地 Runtime 或 WhisperX 服务。请运行 hypit runtime up。";
   }
   return message;
 }
@@ -108,6 +113,7 @@ async function mergeWorkflow(session: AnalysisSessionView): Promise<AnalysisSess
 }
 
 export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
+  void loadWorkspaceEnv(distributionRoot);
   void loadWorkspaceEnv(options.workspaceRoot);
   let session: AnalysisSessionView = { workspaceRoot: options.workspaceRoot };
   let jobRunning = false;
@@ -131,6 +137,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
   async function refreshConfig(): Promise<AnalysisConfigView> {
     const runtime = await resolveRuntime();
     const gateway = await loadChatGateway(runtime, options.workspaceRoot);
+    const defaultVideoUrl = resolveDefaultVideoUrl();
     return {
       ...config,
       ...(runtime === undefined ? {} : { runtimeProfile: runtime }),
@@ -141,23 +148,43 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         hasChatApiKey: (process.env[gateway.apiKeyEnv]?.trim().length ?? 0) > 0,
       }),
       hasH3ApiKey: (process.env.H3_VIDEO_API_KEY?.trim().length ?? 0) > 0,
+      ...(defaultVideoUrl === undefined ? {} : {
+        defaultVideoUrl,
+        defaultVideoName: DEFAULT_VIDEO_NAME,
+      }),
+    };
+  }
+
+  async function adoptImportedVideo(target: string, imported: { readonly videoName: string; readonly videoUrl?: string }): Promise<void> {
+    const probe = await probeMedia(target);
+    await clearWorkflowState(options.workspaceRoot);
+    const runtimePath = await resolveRuntime();
+    session = {
+      workspaceRoot: options.workspaceRoot,
+      ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }),
+      videoPath: target,
+      videoName: imported.videoName,
+      probe,
+      job: { id: "upload", status: "complete" },
+      ...(imported.videoUrl === undefined ? {} : { videoUrl: imported.videoUrl }),
     };
   }
 
   async function persistWorkflow(): Promise<void> {
     await saveWorkflowState(options.workspaceRoot, {
-      videoPath: session.videoPath,
-      productReferencePath: session.productReferencePath,
-      productReferenceName: session.productReferenceName,
-      videoAroll: session.videoAroll,
-      insight: session.insight,
-      brief: session.brief,
-      treatment: session.treatment,
-      scaffold: session.scaffold,
-      build: session.build,
-      adaptation: session.adaptation,
-      adaptationGoal: session.adaptationGoal,
-      directorReview: session.directorReview,
+      ...(session.videoPath === undefined ? {} : { videoPath: session.videoPath }),
+      ...(session.videoUrl === undefined ? {} : { videoUrl: session.videoUrl }),
+      ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
+      ...(session.productReferenceName === undefined ? {} : { productReferenceName: session.productReferenceName }),
+      ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
+      ...(session.insight === undefined ? {} : { insight: session.insight }),
+      ...(session.brief === undefined ? {} : { brief: session.brief }),
+      ...(session.treatment === undefined ? {} : { treatment: session.treatment }),
+      ...(session.scaffold === undefined ? {} : { scaffold: session.scaffold }),
+      ...(session.build === undefined ? {} : { build: session.build }),
+      ...(session.adaptation === undefined ? {} : { adaptation: session.adaptation }),
+      ...(session.adaptationGoal === undefined ? {} : { adaptationGoal: session.adaptationGoal }),
+      ...(session.directorReview === undefined ? {} : { directorReview: session.directorReview }),
     });
   }
 
@@ -187,8 +214,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       const runtimePath = await resolveRuntime();
       const adaptation = await prepareProductAdaptation({
         session,
-        runtimePath,
-        goal: effectiveGoal,
+        ...(runtimePath === undefined ? {} : { runtimePath }),
+        ...(effectiveGoal === undefined ? {} : { goal: effectiveGoal }),
         onPhase: (phase) => {
           session = { ...session, adaptation: { status: "running", phase } };
         },
@@ -203,10 +230,10 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         ...session,
         adaptation,
         ...(briefMarkdown === undefined ? {} : {
-          brief: { markdown: briefMarkdown, path: adaptation.briefPath },
+          brief: { markdown: briefMarkdown, ...(adaptation.briefPath === undefined ? {} : { path: adaptation.briefPath }) },
         }),
         ...(treatmentMarkdown === undefined ? {} : {
-          treatment: { markdown: treatmentMarkdown, path: adaptation.treatmentPath },
+          treatment: { markdown: treatmentMarkdown, ...(adaptation.treatmentPath === undefined ? {} : { path: adaptation.treatmentPath }) },
         }),
       };
       await persistWorkflow();
@@ -239,8 +266,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               status: status.status === "complete" ? "complete" : status.status === "error" ? "error" : "building",
               phase: status.phase,
               ...(status.error === undefined ? {} : { error: status.error }),
-              planSummary: session.build?.planSummary,
-              outputVideoPath: session.build?.outputVideoPath,
+              ...(session.build?.planSummary === undefined ? {} : { planSummary: session.build.planSummary }),
+              ...(session.build?.outputVideoPath === undefined ? {} : { outputVideoPath: session.build.outputVideoPath }),
             },
             workflowJob: {
               id: session.workflowJob?.id ?? "workflow",
@@ -331,19 +358,24 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             void (async () => {
               try {
                 const runtimePath = await resolveRuntime();
+                session = {
+                  ...session,
+                  job: { ...(session.job ?? { id: "latest", status: "running" }), status: "running", phase: "启动 WhisperX…" },
+                };
+                await ensureRuntimeUp(options.workspaceRoot, runtimePath, ["whisperx.local"]);
                 const result = await runFullAnalysis({
                   workspaceRoot: options.workspaceRoot,
                   videoPath,
                   language,
-                  runtimePath,
+                  ...(runtimePath === undefined ? {} : { runtimePath }),
                   onPhase: (phase) => {
                     session = { ...session, job: { ...(session.job ?? { id: "latest", status: "running" }), status: "running", phase } };
                   },
                 });
-                session = { ...result, runtimeProfile: runtimePath };
+                session = { ...result, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
                 const insight = await generateInsight({
                   session,
-                  runtimePath,
+                  ...(runtimePath === undefined ? {} : { runtimePath }),
                   onPhase: (phase) => {
                     session = {
                       ...session,
@@ -386,17 +418,24 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/readiness") {
             const forBuild = url.searchParams.get("forBuild") === "1";
+            const runtimePath = await resolveRuntime();
             session = await mergeWorkflow(session);
             json(response, 200, await checkReplicationReadiness(session, {
               forBuild,
-              runtimePath: await resolveRuntime(),
+              ...(runtimePath === undefined ? {} : { runtimePath }),
             }));
             return;
           }
 
           if (request.method === "POST" && url.pathname === "/__analysis/adaptation-goal") {
             const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as { goal?: string };
-            session = { ...session, adaptationGoal: body.goal?.trim() || undefined };
+            const goal = body.goal?.trim();
+            if (goal === undefined || goal.length === 0) {
+              const { adaptationGoal: _clearedGoal, ...retained } = session;
+              session = retained;
+            } else {
+              session = { ...session, adaptationGoal: goal };
+            }
             await persistWorkflow();
             json(response, 200, session);
             return;
@@ -449,7 +488,10 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
           if (request.method === "POST" && url.pathname === "/__analysis/replicate") {
             if (workflowRunning) throw new Error("已有复刻任务在运行");
             if (session.analysisPath === undefined) throw new Error("请先完成媒体分析");
-            await assertReplicationReady(session, { runtimePath: await resolveRuntime() });
+            const replicaRuntimePath = await resolveRuntime();
+            await assertReplicationReady(session, {
+              ...(replicaRuntimePath === undefined ? {} : { runtimePath: replicaRuntimePath }),
+            });
             const body = JSON.parse((await readBody(request)).toString("utf8")) as {
               replacements?: string;
               goal?: string;
@@ -469,16 +511,17 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             void (async () => {
               const runtimePath = await resolveRuntime();
               try {
+                const videoAroll = body.videoAroll ?? session.videoAroll;
                 const workflow = await runFullReplication({
                   session,
-                  runtimePath,
                   distributionRoot,
-                  replacements: body.replacements,
-                  goal: body.goal,
-                  speechMode: body.speechMode,
-                  formatId: body.formatId,
-                  productReferencePath: session.productReferencePath,
-                  videoAroll: body.videoAroll ?? session.videoAroll,
+                  ...(runtimePath === undefined ? {} : { runtimePath }),
+                  ...(body.replacements === undefined ? {} : { replacements: body.replacements }),
+                  ...(body.goal === undefined ? {} : { goal: body.goal }),
+                  ...(body.speechMode === undefined ? {} : { speechMode: body.speechMode }),
+                  ...(body.formatId === undefined ? {} : { formatId: body.formatId }),
+                  ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
+                  ...(videoAroll === undefined ? {} : { videoAroll }),
                   onPhase: (phase) => {
                     session = {
                       ...session,
@@ -486,7 +529,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                     };
                   },
                 });
-                session = { ...session, ...workflow, runtimeProfile: runtimePath };
+                session = { ...session, ...workflow, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
                 await persistWorkflow();
 
                 if (body.autoBuild !== false) {
@@ -532,16 +575,14 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                   await persistWorkflow();
                 }
               } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const nextBuild = session.build?.status === "building" || session.build?.status === "planning"
+                  ? { ...session.build, status: "error" as const, error: message }
+                  : session.build;
                 session = {
                   ...session,
-                  workflowJob: {
-                    id: workflowId,
-                    status: "error",
-                    error: error instanceof Error ? error.message : String(error),
-                  },
-                  build: session.build?.status === "building" || session.build?.status === "planning"
-                    ? { ...session.build, status: "error", error: error instanceof Error ? error.message : String(error) }
-                    : session.build,
+                  workflowJob: { id: workflowId, status: "error", error: message },
+                  ...(nextBuild === undefined ? {} : { build: nextBuild }),
                 };
                 await persistWorkflow();
               } finally {
@@ -553,7 +594,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/interpret") {
             if (session.analysisPath === undefined) throw new Error("请先完成媒体分析");
-            const insight = await generateInsight({ session, runtimePath: await resolveRuntime() });
+            const runtimePath = await resolveRuntime();
+            const insight = await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
             session = { ...session, insight };
             await persistWorkflow();
             json(response, 200, session);
@@ -562,8 +604,15 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/brief") {
             const body = JSON.parse((await readBody(request)).toString("utf8")) as { replacements?: string; goal?: string };
-            const insight = session.insight ?? await generateInsight({ session, runtimePath: await resolveRuntime() });
-            const brief = await generateBrief({ session, insight, replacements: body.replacements, goal: body.goal, runtimePath: await resolveRuntime() });
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const brief = await generateBrief({
+              session,
+              insight,
+              ...(body.replacements === undefined ? {} : { replacements: body.replacements }),
+              ...(body.goal === undefined ? {} : { goal: body.goal }),
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
             session = { ...session, insight, brief };
             await persistWorkflow();
             json(response, 200, session);
@@ -572,8 +621,14 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/treatment") {
             if (session.brief === undefined) throw new Error("请先生成 Brief");
-            const insight = session.insight ?? await generateInsight({ session, runtimePath: await resolveRuntime() });
-            const treatment = await generateTreatment({ session, insight, brief: session.brief, runtimePath: await resolveRuntime() });
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const treatment = await generateTreatment({
+              session,
+              insight,
+              brief: session.brief,
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
             session = { ...session, insight, treatment };
             await persistWorkflow();
             json(response, 200, session);
@@ -585,22 +640,28 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               speechMode?: "reference" | "tts";
               formatId?: string;
             };
-            const insight = session.insight ?? await generateInsight({ session, runtimePath: await resolveRuntime() });
-            const brief = session.brief ?? await generateBrief({ session, insight, runtimePath: await resolveRuntime() });
-            const treatment = session.treatment ?? await generateTreatment({ session, insight, brief, runtimePath: await resolveRuntime() });
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const brief = session.brief ?? await generateBrief({ session, insight, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const treatment = session.treatment ?? await generateTreatment({
+              session,
+              insight,
+              brief,
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
             const scaffold = await scaffoldProject({
               session,
               insight,
               brief,
               treatment,
               distributionRoot,
-              formatId: body.formatId,
-              runtimePath: await resolveRuntime(),
-              speechMode: body.speechMode,
-              productReferencePath: session.productReferencePath,
-              videoAroll: session.videoAroll,
-              goal: session.adaptationGoal,
-              preparedAdaptation: session.adaptation,
+              ...(body.formatId === undefined ? {} : { formatId: body.formatId }),
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+              ...(body.speechMode === undefined ? {} : { speechMode: body.speechMode }),
+              ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
+              ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
+              ...(session.adaptationGoal === undefined ? {} : { goal: session.adaptationGoal }),
+              ...(session.adaptation === undefined ? {} : { preparedAdaptation: session.adaptation }),
             });
             session = { ...session, insight, brief, treatment, scaffold };
             await persistWorkflow();
@@ -616,9 +677,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               session = { ...session, scaffold: refreshed };
               await persistWorkflow();
             }
-            await assertReplicationReady(session, { forBuild: true, runtimePath: await resolveRuntime() });
-            workflowRunning = true;
             const runtimePath = await resolveRuntime();
+            await assertReplicationReady(session, { forBuild: true, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            workflowRunning = true;
             json(response, 202, { ...session, build: { status: "planning", phase: "启动中…" } });
             void (async () => {
               try {
@@ -655,10 +716,10 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
           }
 
           if (request.method === "POST" && url.pathname === "/__analysis/reference-archive") {
-            if (session.analysisPath === undefined) throw new Error("请先完成媒体分析");
+            const analysisPath = session.analysisPath;
+            if (analysisPath === undefined) throw new Error("请先完成媒体分析");
             const archive = await writeReferenceArchive(session);
             session = { ...session, referenceArchive: archive };
-            const analysisPath = session.analysisPath;
             const raw = JSON.parse(await readFile(analysisPath, "utf8")) as Record<string, unknown>;
             await writeFile(analysisPath, `${JSON.stringify({ ...raw, referenceArchive: archive }, null, 2)}\n`, "utf8");
             json(response, 200, session);
@@ -667,7 +728,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/document") {
             const target = url.searchParams.get("path");
-            if (target === undefined) throw new Error("缺少 path");
+            if (target === null || target.length === 0) throw new Error("缺少 path");
             const docPath = assertWithinRoot(options.workspaceRoot, resolve(options.workspaceRoot, target));
             const text = await readFile(docPath, "utf8");
             json(response, 200, { path: docPath, markdown: text });
@@ -684,16 +745,23 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             await mkdir(dirname(staging), { recursive: true });
             await writeFile(staging, fileBytes);
             const target = await importUploadedFile(staging, options.workspaceRoot, fileName);
-            const probe = await probeMedia(target);
-            await clearWorkflowState(options.workspaceRoot);
-            session = {
+            await adoptImportedVideo(target, { videoName: basename(target) });
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/use-default-video") {
+            const defaultVideoUrl = resolveDefaultVideoUrl();
+            if (defaultVideoUrl === undefined) throw new Error("未配置默认视频。请运行 pnpm upload:origin");
+            const localFallback = resolve(distributionRoot, DEFAULT_VIDEO_NAME);
+            const target = await materializeDefaultVideo({
+              url: defaultVideoUrl,
               workspaceRoot: options.workspaceRoot,
-              runtimeProfile: await resolveRuntime(),
-              videoPath: target,
-              videoName: basename(target),
-              probe,
-              job: { id: "upload", status: "complete" },
-            };
+              ...(existsSync(localFallback) ? { localFallback } : {}),
+            });
+            await adoptImportedVideo(target, { videoName: DEFAULT_VIDEO_NAME, videoUrl: defaultVideoUrl });
+            await persistWorkflow();
             json(response, 200, session);
             return;
           }
@@ -710,8 +778,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             await writeFile(staging, fileBytes);
             const target = await importUploadedFile(staging, options.workspaceRoot, fileName);
             const referenceChanged = session.productReferencePath !== target;
+            const { adaptation: _adaptation, scaffold: _scaffold, build: _build, workflowJob: _workflowJob, ...retained } = session;
             session = {
-              ...session,
+              ...(referenceChanged ? retained : session),
               productReferencePath: target,
               productReferenceName: basename(target),
               videoAroll: session.videoAroll ?? true,
@@ -733,7 +802,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/media") {
             const target = url.searchParams.get("path");
-            if (target === undefined) throw new Error("缺少 path");
+            if (target === null || target.length === 0) throw new Error("缺少 path");
             const videoPath = assertWithinRoot(options.workspaceRoot, resolve(options.workspaceRoot, target));
             if (!existsSync(videoPath)) throw new Error("文件不存在");
             const ext = extname(videoPath).toLowerCase();
@@ -759,7 +828,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/restore") {
             const saved = await loadSavedAnalysis(options.workspaceRoot);
-            if (saved !== undefined) session = { ...saved, runtimeProfile: await resolveRuntime() };
+            const runtimePath = await resolveRuntime();
+            if (saved !== undefined) session = { ...saved, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
             session = await mergeWorkflow(session);
             json(response, 200, session);
             return;
@@ -772,6 +842,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       });
     },
     async buildStart(): Promise<void> {
+      await loadWorkspaceEnv(distributionRoot);
+      await loadWorkspaceEnv(options.workspaceRoot);
       const saved = await loadSavedAnalysis(options.workspaceRoot);
       if (saved !== undefined) {
         session = await mergeWorkflow(saved);
@@ -779,7 +851,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         const probe = await probeMedia(options.initialVideoPath);
         session = {
           workspaceRoot: options.workspaceRoot,
-          runtimeProfile: options.runtimePath,
+          ...(options.runtimePath === undefined ? {} : { runtimeProfile: options.runtimePath }),
           videoPath: options.initialVideoPath,
           videoName: basename(options.initialVideoPath),
           probe,
@@ -841,7 +913,11 @@ function parseMultipartUpload(
       mimeType = typeMatch?.[1]?.trim().toLowerCase();
     }
   }
-  return { fileName, fileBytes, contentType: mimeType };
+  return {
+    fileName,
+    ...(fileBytes === undefined ? {} : { fileBytes }),
+    ...(mimeType === undefined ? {} : { contentType: mimeType }),
+  };
 }
 
 function resolveImageExtension(fileName: string, mimeType: string | undefined, fileBytes: Buffer): string {

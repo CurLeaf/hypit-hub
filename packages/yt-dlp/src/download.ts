@@ -17,6 +17,8 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { uvPythonEnvironment } from "@hypit/runtime-host-node";
+
 /**
  * Whether this is a link to fetch rather than a path to open.
  *
@@ -74,7 +76,14 @@ export async function downloadVideo(url: string, target: string): Promise<void> 
       "--format-sort", "res:1080,vcodec:h264",
       "--output", join(work, "video.%(ext)s"),
       url,
-    ], { encoding: "utf8", windowsHide: true, timeout: 900_000 });
+    ], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 900_000,
+      // This project is built from the same interpreter WhisperX and OpenCV are; see
+      // `uvPythonEnvironment` and the `HYPIT_PYTHON` note in the WhisperX service README.
+      env: { ...process.env, ...uvPythonEnvironment() },
+    });
 
     if (result.error !== undefined && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(

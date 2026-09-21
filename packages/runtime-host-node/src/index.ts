@@ -425,6 +425,30 @@ export function pythonEnvironmentCommand(environment: string, name: string): str
     : resolve(environment, "bin", name);
 }
 
+/**
+ * The interpreter a managed uv project builds its own environment from.
+ *
+ * uv downloads and prefers CPython builds of its own, so a machine that already manages Python
+ * through vfox, mise, asdf or pyenv would grow a second, unrelated interpreter under uv's data
+ * directory. `HYPIT_PYTHON` names the interpreter to build from instead, and is passed on as
+ * `UV_PYTHON` because that is the variable uv itself reads.
+ *
+ * Name an absolute path to the executable to pin that exact interpreter. A version request such as
+ * `3.13` only narrows the choice: uv still resolves it through its own preference order, which puts
+ * the builds it downloaded first, so it does not by itself adopt a version manager's Python.
+ *
+ * An operator who set `UV_PYTHON` directly already spoke uv's language, and those programs are
+ * usually the ones moved between machines on purpose. Their value is left alone here; uv reads it
+ * from the inherited environment either way.
+ */
+export function uvPythonEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+): Readonly<Record<string, string>> {
+  if (environment.UV_PYTHON?.trim()) return {};
+  const requested = environment.HYPIT_PYTHON?.trim();
+  return requested === undefined || requested.length === 0 ? {} : { UV_PYTHON: requested };
+}
+
 export {
   inspectHostPackage,
   parseRegistryPackageSpec,

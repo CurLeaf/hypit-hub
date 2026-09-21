@@ -28,6 +28,7 @@ export type WorkflowState = Pick<AnalysisSessionView,
   "insight" | "brief" | "treatment" | "scaffold" | "build" | "adaptation" | "adaptationGoal"
   | "productReferencePath" | "productReferenceName" | "videoAroll" | "directorReview"> & {
   readonly videoPath?: string;
+  readonly videoUrl?: string;
 };
 
 export async function loadWorkflowState(workspaceRoot: string): Promise<WorkflowState> {
@@ -135,7 +136,7 @@ async function persistInsight(
 export async function generateInsight(input: {
   readonly session: AnalysisSessionView;
   readonly runtimePath?: string;
-  readonly onPhase?(phase: string): void;
+  onPhase?(phase: string): void;
   readonly requireLlm?: boolean;
 }): Promise<ViralInsightView> {
   input.onPhase?.("解读爆款逻辑…");
@@ -270,11 +271,11 @@ export async function resolveWorkflowBrief(input: {
   return generateBrief({
     session: input.session,
     insight: input.insight,
-    replacements: input.replacements,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
+    ...(input.replacements === undefined ? {} : { replacements: input.replacements }),
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     outputDir: input.productionDir,
-    requireLlm: input.requireLlm,
+    ...(input.requireLlm === undefined ? {} : { requireLlm: input.requireLlm }),
   });
 }
 
@@ -297,9 +298,9 @@ export async function resolveWorkflowTreatment(input: {
     session: input.session,
     insight: input.insight,
     brief: input.brief,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     outputDir: input.productionDir,
-    requireLlm: input.requireLlm,
+    ...(input.requireLlm === undefined ? {} : { requireLlm: input.requireLlm }),
   });
 }
 
@@ -451,9 +452,10 @@ export async function scaffoldProject(input: {
     ugc: "examples/byok-openai-compatible/templates/ugc-replica",
     explainer: "examples/byok-openai-compatible/templates/ugc-replica",
   };
-  const templateKey = templateByFormat[formatId] ?? templateByFormat.ugc;
+  const templateKey = templateByFormat[formatId] ?? "examples/byok-openai-compatible/templates/ugc-replica";
   const templateDir = resolve(input.distributionRoot, templateKey);
 
+  const preparedAdaptation = input.preparedAdaptation ?? input.session.adaptation;
   const { authorPath, runPath } = await generateFormatReplicaProject({
     session: input.session,
     insight: input.insight,
@@ -462,13 +464,13 @@ export async function scaffoldProject(input: {
     distributionRoot: input.distributionRoot,
     workspaceRoot: input.session.workspaceRoot,
     formatId,
-    runtimePath: input.runtimePath,
-    speechMode: input.speechMode,
-    productReferencePath: input.productReferencePath,
-    videoAroll: input.videoAroll,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
+    ...(input.speechMode === undefined ? {} : { speechMode: input.speechMode }),
+    ...(input.productReferencePath === undefined ? {} : { productReferencePath: input.productReferencePath }),
+    ...(input.videoAroll === undefined ? {} : { videoAroll: input.videoAroll }),
     brief: input.brief,
-    goal: input.goal,
-    preparedAdaptation: input.preparedAdaptation ?? input.session.adaptation,
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(preparedAdaptation === undefined ? {} : { preparedAdaptation }),
   });
   await writeFile(join(productionDir, "TEMPLATE.md"), [
     "# 结构模板",
@@ -550,7 +552,7 @@ export async function runFullReplication(input: {
   readonly speechMode?: "reference" | "tts";
   readonly productReferencePath?: string;
   readonly videoAroll?: boolean;
-  readonly onPhase?(phase: string): void;
+  onPhase?(phase: string): void;
 }): Promise<WorkflowState> {
   if (input.session.analysisPath === undefined) throw new Error("请先完成媒体分析");
   if (input.session.productReferencePath === undefined) {
@@ -561,8 +563,8 @@ export async function runFullReplication(input: {
   input.onPhase?.("解读爆款逻辑…");
   const insight = await generateInsight({
     session: input.session,
-    runtimePath: input.runtimePath,
-    onPhase: input.onPhase,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
+    ...(input.onPhase === undefined ? {} : { onPhase: input.onPhase }),
     requireLlm: true,
   });
   input.onPhase?.("撰写 Brief…");
@@ -570,9 +572,9 @@ export async function runFullReplication(input: {
     session: input.session,
     insight,
     productionDir,
-    replacements: input.replacements,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
+    ...(input.replacements === undefined ? {} : { replacements: input.replacements }),
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
   input.onPhase?.("撰写 Treatment…");
@@ -581,23 +583,25 @@ export async function runFullReplication(input: {
     insight,
     brief,
     productionDir,
-    runtimePath: input.runtimePath,
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     requireLlm: true,
   });
   input.onPhase?.("生成工程文件…");
+  const productReferencePath = input.productReferencePath ?? input.session.productReferencePath;
+  const videoAroll = input.videoAroll ?? input.session.videoAroll;
   const scaffold = await scaffoldProject({
     session: input.session,
     insight,
     brief,
     treatment,
     distributionRoot: input.distributionRoot,
-    formatId: input.formatId,
-    runtimePath: input.runtimePath,
+    ...(input.formatId === undefined ? {} : { formatId: input.formatId }),
+    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     speechMode: "tts",
-    productReferencePath: input.productReferencePath ?? input.session.productReferencePath,
-    videoAroll: input.videoAroll ?? input.session.videoAroll,
-    goal: input.goal,
-    preparedAdaptation: input.session.adaptation,
+    ...(productReferencePath === undefined ? {} : { productReferencePath }),
+    ...(videoAroll === undefined ? {} : { videoAroll }),
+    ...(input.goal === undefined ? {} : { goal: input.goal }),
+    ...(input.session.adaptation === undefined ? {} : { preparedAdaptation: input.session.adaptation }),
   });
   return { insight, brief, treatment, scaffold };
 }

@@ -2,45 +2,30 @@ import type { EndpointInvocationContext } from "@hypit/endpoint-kit";
 import type { BlobRef } from "@hypit/protocol";
 
 import type { OpenAiCompatibleClient } from "./client.js";
-import { uploadReferenceToS3 } from "./s3-upload.js";
+import {
+  putS3PublicObject,
+  s3PublicObjectKey,
+  type S3PublicUploadConfig,
+} from "./s3-public-upload.js";
 
-function uploadFilename(mediaType: string): string {
-  const map: Record<string, string> = {
-    "image/png": "reference.png",
-    "image/jpeg": "reference.jpg",
-    "image/webp": "reference.webp",
-    "audio/wav": "reference.wav",
-    "audio/mpeg": "reference.mp3",
-    "video/mp4": "reference.mp4",
-  };
-  return map[mediaType] ?? "reference.bin";
-}
-
-function minimaxFileId(response: Record<string, unknown>): string {
-  const file = response.file;
-  if (file !== null && typeof file === "object" && !Array.isArray(file)) {
-    const nested = (file as Record<string, unknown>).file_id;
-    if (typeof nested === "string" && nested.length > 0) return nested;
-  }
-  const direct = response.file_id;
-  if (typeof direct === "string" && direct.length > 0) return direct;
-  throw new Error("MiniMax upload did not return file_id");
-}
-
-async function uploadMinimaxArtifactUrl(
-  client: OpenAiCompatibleClient,
+export type ResolveArtifactUrl = (
+  artifact: BlobRef,
+  resources: EndpointInvocationContext["resources"],
   secret: string,
-  bytes: Uint8Array,
-  mediaType: string,
-): Promise<string> {
-  const form = new FormData();
-  form.append("purpose", "video_generation_input");
-  form.append("file", new Blob([bytes], { type: mediaType }), uploadFilename(mediaType));
-  const response = await client.json(client.routes.fileUpload, secret, {
-    method: "POST",
-    body: form,
-  });
-  return `mm_file://${minimaxFileId(response)}`;
+) => Promise<string>;
+
+function objectId(artifact: BlobRef): string {
+  const raw = String(artifact.resource).replace(/[^a-zA-Z0-9]+/gu, "-").replace(/^-+|-+$/gu, "");
+  return raw.length > 0 ? raw.slice(-48) : "reference";
+}
+
+async function readBytes(
+  artifact: BlobRef,
+  resources: EndpointInvocationContext["resources"],
+): Promise<{ readonly bytes: Uint8Array; readonly mediaType: string }> {
+  const bytes = await resources.get(artifact.resource);
+  if (bytes === undefined) throw new Error("Reference media is unavailable");
+  return { bytes, mediaType: artifact.mediaType ?? "application/octet-stream" };
 }
 
 export async function uploadArtifactUrl(
@@ -49,16 +34,8 @@ export async function uploadArtifactUrl(
   artifact: BlobRef,
   resources: EndpointInvocationContext["resources"],
 ): Promise<string> {
-  const bytes = await resources.get(artifact.resource);
-  if (bytes === undefined) throw new Error("Reference media is unavailable");
-  const mediaType = artifact.mediaType ?? "application/octet-stream";
-  if (client.referenceUpload === "s3") {
-    return await uploadReferenceToS3(bytes, mediaType);
-  }
-  if (client.uploadMode === "minimax-multipart") {
-    return await uploadMinimaxArtifactUrl(client, secret, bytes, mediaType);
-  }
-  const response = await client.json(client.routes.fileUpload, secret, {
+  const { bytes, mediaType } = await readBytes(artifact, resources);
+  const response = await client.json("/files", secret, {
     method: "POST",
     headers: { "content-type": mediaType },
     body: new Blob([new Uint8Array(bytes)]),
@@ -68,4 +45,23 @@ export async function uploadArtifactUrl(
     throw new Error("OpenAI-compatible upload did not return a URL");
   }
   return url;
+}
+
+export function createArtifactUrlResolver(
+  client: OpenAiCompatibleClient,
+  referenceUpload?: S3PublicUploadConfig,
+): ResolveArtifactUrl {
+  if (referenceUpload === undefined) {
+    return async (artifact, resources, secret) =>
+      await uploadArtifactUrl(client, secret, artifact, resources);
+  }
+  return async (artifact, resources) => {
+    const { bytes, mediaType } = await readBytes(artifact, resources);
+    return await putS3PublicObject(referenceUpload, {
+      bytes,
+      mediaType,
+      key: s3PublicObjectKey(referenceUpload, mediaType, objectId(artifact)),
+      fetch: client.fetcher,
+    });
+  };
 }

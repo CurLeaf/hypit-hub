@@ -32,6 +32,40 @@ pnpm test             # full test suite
 
 See [Testing](./testing.md) for environment-gated tests and test patterns.
 
+## Local Python and the Analysis UI
+
+WhisperX, OpenCV and the pinned `yt-dlp` are uv projects the Runtime builds on demand. uv prefers the
+CPython builds it downloaded itself, so a machine that already manages Python with vfox, mise, asdf
+or pyenv would otherwise grow a second, unrelated interpreter under uv's data directory.
+`HYPIT_PYTHON` names the interpreter to build from instead:
+
+```bash
+# vfox; `vfox current python` reports which version this is
+export HYPIT_PYTHON="${VFOX_HOME:-$HOME/.vfox}/sdks/python/bin/python3"
+pnpm analysis:watch
+```
+
+Name the interpreter's path rather than a bare version: a version request like `3.13` still resolves
+through uv's own preference order, which reaches for uv's downloads first. An explicit `UV_PYTHON`
+is left alone, because it is uv's own variable. Setting either one does not rebuild an environment
+that already exists: WhisperX and the pinned `yt-dlp` adopt the interpreter on their next run, while
+an existing OpenCV environment has to be removed before it is built again.
+
+The Analysis UI loads the workspace `.env` into the CLI children it starts, so a `HYPIT_PYTHON` kept
+there also covers the Runtime preparation and Builds that `pnpm analysis` submits. Running `uv sync`
+or `hypit runtime up` in a bare terminal needs the export instead (or `set -a; . ./.env; set +a`).
+
+`pnpm analysis` starts the Analysis UI (`hypit analysis`); `pnpm analysis:watch` adds `node --watch`,
+which restarts the process when a module under `packages/analysis/src` changes. Either way the
+interface is served by Vite: styles are replaced in place and an interface code change reloads the
+page by itself. Analysis, Workflow and Build state lives on the server and is restored from
+`.hypit/` after a reload or restart, but work that was still running when the process stopped does
+not continue.
+
+`pnpm upload:origin` publishes the checkout's `origin.mp4` to `{S3_CDN}/hypit/default/origin.mp4`
+and writes `HYPIT_DEFAULT_VIDEO_URL`. The Analysis sidebar option **使用默认视频** uses that URL
+directly (ffmpeg/WhisperX still cache a local copy).
+
 ## Repository layout
 
 ```text

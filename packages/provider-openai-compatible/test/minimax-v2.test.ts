@@ -1,128 +1,113 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EndpointRegistry, MemoryResourceStore } from "@hypit/driver-node";
-import { canonicalize } from "@hypit/endpoint-kit";
-import { generationTypes } from "@hypit/generation";
-import { sealMinimaxH3Request } from "@hypit/minimax-h3";
+import { defaultOpenAiCompatibleRoutes } from "../src/client.js";
+import {
+  applyVideoAdapterRoutes,
+  compileMinimaxV2Request,
+  minimaxV2Resolution,
+  videoJobError,
+  videoJobId,
+  videoJobStatus,
+  videoOutputUrl,
+} from "../src/minimax-v2.js";
+import { resolveRuntimeText } from "../src/runtime-text.js";
 
-import { buildMinimaxV2SubmitBody, normalizeMinimaxResolution } from "../src/minimax-v2.js";
-import { createOpenAiCompatibleProvider } from "../src/provider.js";
-
-test("normalizeMinimaxResolution maps common values", () => {
-  assert.equal(normalizeMinimaxResolution("2k"), "2K");
-  assert.equal(normalizeMinimaxResolution("768p"), "768P");
-});
-
-test("buildMinimaxV2SubmitBody maps reference image and audio", () => {
-  const body = buildMinimaxV2SubmitBody("MiniMax-H3", {
-    prompt: "Presenter explains the product",
-    seconds: 8,
+test("MiniMax V2 compiles talking-head references into content[]", async () => {
+  const body = await compileMinimaxV2Request(
+    {
+      ports: {
+        prompt: ["Presenter explains the dryer"],
+        duration: [6],
+        resolution: ["768P"],
+        aspectRatio: ["9:16"],
+        referenceImage: [{ role: "image", artifact: { kind: "blob", resource: "res:image", size: 3, mediaType: "image/png" } }],
+        referenceAudio: [{ role: "audio", artifact: { kind: "blob", resource: "res:audio", size: 3, mediaType: "audio/wav" } }],
+      },
+    },
+    "MiniMax-H3",
+    async (artifact) => `https://cdn.example/${artifact.resource}`,
+  );
+  assert.deepEqual(body, {
+    model: "MiniMax-H3",
+    content: [
+      { type: "text", text: "Presenter explains the dryer" },
+      { type: "image_url", role: "reference_image", image_url: { url: "https://cdn.example/res:image" } },
+      { type: "audio_url", role: "reference_audio", audio_url: { url: "https://cdn.example/res:audio" } },
+    ],
+    duration: 6,
     resolution: "768P",
-    aspect_ratio: "9:16",
-    reference_image_urls: ["mm_file://img-1"],
-    reference_audios: ["mm_file://audio-1"],
+    ratio: "9:16",
   });
-  assert.equal(body.model, "MiniMax-H3");
-  assert.equal(body.duration, 8);
-  assert.equal(body.ratio, "9:16");
-  assert.deepEqual(body.content, [
-    { type: "text", text: "Presenter explains the product" },
-    { type: "image_url", image_url: { url: "mm_file://img-1" }, role: "reference_image" },
-    { type: "audio_url", audio_url: { url: "mm_file://audio-1" }, role: "reference_audio" },
+});
+
+test("MiniMax V2 first/last-frame requests use adaptive ratio", async () => {
+  const body = await compileMinimaxV2Request(
+    {
+      ports: {
+        prompt: ["Camera push in"],
+        duration: [5],
+        firstFrame: [{ role: "image", artifact: { kind: "blob", resource: "res:first", size: 1, mediaType: "image/png" } }],
+        lastFrame: [{ role: "image", artifact: { kind: "blob", resource: "res:last", size: 1, mediaType: "image/png" } }],
+      },
+    },
+    "MiniMax-H3",
+    async (artifact) => `https://cdn.example/${artifact.resource}`,
+  );
+  assert.equal(body.ratio, "adaptive");
+  assert.equal(body.resolution, "768P");
+  assert.deepEqual(body.content.map((item) => "role" in item ? item.role : item.type), [
+    "text",
+    "first_frame",
+    "last_frame",
   ]);
 });
 
-test("OpenAI-compatible provider uploads via MiniMax multipart and submits v2 video", async () => {
-  const resources = new MemoryResourceStore();
-  const imageResource = await resources.put(new Uint8Array([1, 2, 3]), "image/png");
-  const audioResource = await resources.put(new Uint8Array([4, 5, 6]), "audio/wav");
-  const calls: string[] = [];
-  const provider = createOpenAiCompatibleProvider({
-    instance: "gateway.minimax",
-    pool: "gateway.minimax",
-    baseUrl: "https://gateway.example",
-    apiKey: { store: "env", key: "H3_VIDEO_API_KEY" },
-    uploadMode: "minimax-multipart",
-    videoAdapter: "minimax-v2",
-    models: { "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3" },
-    routes: {
-      fileUpload: "/v1/files/upload",
-      videoSubmit: "/v2/video_generation",
-      videoStatus: "/v2/query/video_generation/{id}",
+test("MiniMax V2 resolution keeps H3 tiers", () => {
+  assert.equal(minimaxV2Resolution(undefined), "768P");
+  assert.equal(minimaxV2Resolution("2k"), "2K");
+  assert.equal(minimaxV2Resolution("768P"), "768P");
+});
+
+test("MiniMax V2 adapter replaces leftover OpenAI video routes", () => {
+  const routes = applyVideoAdapterRoutes("minimax-v2", defaultOpenAiCompatibleRoutes);
+  assert.equal(routes.videoSubmit, "/v2/video_generation");
+  assert.equal(routes.videoStatus, "/v2/query/video_generation/{id}");
+});
+
+test("MiniMax V2 query response unwraps nested task content.url", () => {
+  const response = {
+    task: {
+      id: "424010985738629",
+      status: "succeeded",
+      content: { url: "https://cdn.example/output.mp4" },
+      error: { message: "ignored when succeeded" },
     },
-    pollIntervalMs: 0,
-    fetch: async (input, init) => {
-      const url = new URL(String(input));
-      calls.push(url.pathname);
-      if (url.pathname === "/v1/files/upload") {
-        const index = calls.filter((path) => path === "/v1/files/upload").length;
-        return Response.json({ file: { file_id: `file-${index}` } });
-      }
-      if (url.pathname === "/v2/video_generation") {
-        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        assert.equal(body.model, "MiniMax-H3");
-        assert.deepEqual(body.content, [
-          { type: "text", text: "Presenter explains the product" },
-          { type: "image_url", image_url: { url: "mm_file://file-1" }, role: "reference_image" },
-          { type: "audio_url", audio_url: { url: "mm_file://file-2" }, role: "reference_audio" },
-        ]);
-        return Response.json({ task_id: "task-1" });
-      }
-      if (url.pathname === "/v2/query/video_generation/task-1") {
-        return Response.json({
-          task: {
-            id: "task-1",
-            status: "succeeded",
-            content: { url: "https://assets.example/output.mp4" },
-          },
-        });
-      }
-      if (url.hostname === "assets.example") {
-        return new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } });
-      }
-      throw new Error(`Unexpected path ${url.pathname}`);
-    },
-  });
-  const need = {
-    id: "need:minimax-ref",
-    capability: { module: { name: "@hypit/minimax-h3", version: "1" }, name: "minimax-h3" },
-    returns: generationTypes.videoSet,
-    constraints: canonicalize(sealMinimaxH3Request({
-      prompt: ["Presenter explains the product"],
-      aspectRatio: ["9:16"],
-      resolution: ["768P"],
-      duration: [8],
-      referenceImage: [{ role: "image", artifact: imageResource }],
-      referenceAudio: [{ role: "audio", artifact: audioResource }],
-    })),
-    result: "record:minimax-ref",
-  } as const;
-  const registry = new EndpointRegistry();
-  await provider.install(registry);
-  const resolution = registry.resolve(need);
-  assert.equal(resolution.status, "resolved");
-  const endpoint = resolution.registration.endpoint;
-  const context = {
-    need,
-    command: { kind: "fulfill-need", id: "command:minimax-ref", need },
-    operation: "operation:minimax-ref",
-    resources,
-    credentials: { apiKey: { secret: "test-key" } },
-    checkpoint: async () => {},
   };
-  const start = await endpoint.start(context);
-  assert.equal(start.status, "pending");
-  const polled = await endpoint.poll!({ ...context, handle: start.handle });
-  assert.equal(polled.status, "ready");
-  const collected = await endpoint.collect!({ ...context, handle: start.handle });
-  assert.equal(collected.status, "completed");
-  assert.deepEqual(calls, [
-    "/v1/files/upload",
-    "/v1/files/upload",
-    "/v2/video_generation",
-    "/v2/query/video_generation/task-1",
-    "/v2/query/video_generation/task-1",
-    "/output.mp4",
-  ]);
+  assert.equal(videoJobId(response), "424010985738629");
+  assert.equal(videoJobStatus(response), "succeeded");
+  assert.equal(videoOutputUrl(response), "https://cdn.example/output.mp4");
+});
+
+test("MiniMax V2 create response treats a bare task_id as queued", () => {
+  assert.equal(videoJobId({ task_id: "task-1" }), "task-1");
+  assert.equal(videoJobStatus({ task_id: "task-1" }), "queued");
+  assert.equal(videoJobError({ task: { status: "failed", error: { message: "bad prompt" } } }), "bad prompt");
+});
+
+test("OpenAI-compatible baseUrl can be an env reference", () => {
+  const env = { H3_VIDEO_BASE_URL: "https://metaso.cn/api/minimax" };
+  assert.equal(
+    resolveRuntimeText({ store: "env", key: "H3_VIDEO_BASE_URL" }, "baseUrl", env),
+    "https://metaso.cn/api/minimax",
+  );
+  assert.equal(resolveRuntimeText("$H3_VIDEO_BASE_URL", "baseUrl", env), "https://metaso.cn/api/minimax");
+  assert.equal(
+    resolveRuntimeText("https://gateway.example/v1", "baseUrl", env),
+    "https://gateway.example/v1",
+  );
+  assert.throws(
+    () => resolveRuntimeText({ store: "env", key: "H3_VIDEO_BASE_URL" }, "baseUrl", {}),
+    /H3_VIDEO_BASE_URL is missing/u,
+  );
 });
