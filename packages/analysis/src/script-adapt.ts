@@ -28,13 +28,15 @@ export async function adaptScenesForProduct(input: {
   try {
     const content = await chatCompletion({
       gateway,
+      imagePath: input.session.productReferencePath,
       system: [
         "你是短视频口播编剧，遵循 Hypit 官方 transformations.md / brief.md 的「忠实改编」原则。",
         "用户要用自己的参考图复刻爆款参考片的结构与传播逻辑，需要改写各段口播文案。",
         "",
         "必须做到：",
         "- 保留参考片的叙事段落、Hook 时机、节奏与每段的语义功能（开场钩子、痛点、演示、收束等）",
-        "- 口播内容改为用户 Brief 中的新产品/新主体，不要照搬原片品牌名、产品名与具体话术",
+        "- 结合用户上传的产品参考图（若有）识别品类与可见卖点，口播内容改为新产品/新主体",
+        "- 不要照搬原片品牌名、产品名与具体话术；不要机械换词，卖点须可被镜头验证",
         "- 参照 Treatment 与洞察保留传播手法（悬念、对比、情绪递进等）",
         "- 每段 text 为中文口播正文，长度与原段相近，适合竖屏短视频口播",
         "- 键名必须与输入 originalScenes 的 id 完全一致",

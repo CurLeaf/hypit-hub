@@ -1,0 +1,200 @@
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { buildAdaptationScenes } from "./scenes-from-structure.js";
+import type { AnalysisSessionView, DirectorReviewView, ViralInsightView } from "./shared.js";
+
+const DIRECTOR_SUBDIR = ".hypit/analysis/director";
+
+export type DirectorSceneDraft = {
+  readonly id: string;
+  readonly text: string;
+};
+
+export type DirectorPackage = {
+  readonly briefMarkdown?: string;
+  readonly treatmentMarkdown?: string;
+  readonly scenes: readonly DirectorSceneDraft[];
+};
+
+export function directorReviewDir(workspaceRoot: string): string {
+  return join(workspaceRoot, DIRECTOR_SUBDIR);
+}
+
+export function canStartAdaptation(review: DirectorReviewView | undefined): boolean {
+  return review?.status === "approved";
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function rel(workspaceRoot: string, absolutePath: string | undefined): string {
+  if (absolutePath === undefined) return "（未就绪）";
+  return absolutePath.replace(/\\/gu, "/").replace(workspaceRoot.replace(/\\/gu, "/"), ".").replace(/^\.\//u, "");
+}
+
+export async function loadDirectorPackage(workspaceRoot: string): Promise<DirectorPackage> {
+  const dir = directorReviewDir(workspaceRoot);
+  const briefMarkdown = await fileExists(join(dir, "BRIEF.md"))
+    ? await readFile(join(dir, "BRIEF.md"), "utf8")
+    : undefined;
+  const treatmentMarkdown = await fileExists(join(dir, "TREATMENT.md"))
+    ? await readFile(join(dir, "TREATMENT.md"), "utf8")
+    : undefined;
+  let scenes: DirectorSceneDraft[] = [];
+  const scenesPath = join(dir, "scenes.json");
+  if (await fileExists(scenesPath)) {
+    const raw = JSON.parse(await readFile(scenesPath, "utf8")) as readonly { readonly id?: string; readonly text?: string }[];
+    scenes = raw
+      .filter((item) => typeof item.id === "string" && typeof item.text === "string")
+      .map((item) => ({ id: item.id!, text: item.text!.trim() }));
+  }
+  return { briefMarkdown, treatmentMarkdown, scenes };
+}
+
+export function validateDirectorPackage(package_: DirectorPackage): readonly string[] {
+  const issues: string[] = [];
+  if (package_.briefMarkdown === undefined || package_.briefMarkdown.trim().length === 0) {
+    issues.push("缺少 director/BRIEF.md");
+  } else if (/【待替换|【待填/u.test(package_.briefMarkdown)) {
+    issues.push("BRIEF.md 仍含占位符（【待替换】/【待填】），请补全产品信息");
+  }
+  if (package_.treatmentMarkdown === undefined || package_.treatmentMarkdown.trim().length === 0) {
+    issues.push("缺少 director/TREATMENT.md");
+  }
+  const spoken = package_.scenes.map((scene) => scene.text.replace(/\s+/gu, "")).filter((text) => text.length > 0);
+  if (spoken.length === 0) {
+    issues.push("缺少 director/scenes.json 或口播为空");
+  }
+  return issues;
+}
+
+export async function ensureDirectorReviewRequest(input: {
+  readonly session: AnalysisSessionView;
+  readonly insight: ViralInsightView;
+}): Promise<DirectorReviewView> {
+  const { session, insight } = input;
+  const dir = directorReviewDir(session.workspaceRoot);
+  await mkdir(dir, { recursive: true });
+
+  const baseScenes = buildAdaptationScenes(session, insight);
+  const scenesDraft = baseScenes.map((scene) => ({
+    id: scene.momentId,
+    text: scene.text.replace(/\s+/gu, ""),
+  }));
+  const scenesPath = join(dir, "scenes.json");
+  if (!(await fileExists(scenesPath))) {
+    await writeFile(scenesPath, `${JSON.stringify(scenesDraft, null, 2)}\n`, "utf8");
+  }
+
+  const requestPath = join(dir, "REVIEW_REQUEST.md");
+  const checklistPath = join(dir, "CHECKLIST.md");
+  const briefPath = join(dir, "BRIEF.md");
+  const treatmentPath = join(dir, "TREATMENT.md");
+
+  if (!(await fileExists(briefPath))) {
+    await writeFile(briefPath, [
+      "# BRIEF.md（导演审查稿）",
+      "",
+      "## 目标",
+      session.adaptationGoal?.trim() || "（请填写：新产品是什么、卖给谁、核心卖点）",
+      "",
+      "## 从参考片继承",
+      `- 结构：${(session.segments ?? []).map((segment) => segment.label).join(" → ") || "按参考片口播与切镜"}`,
+      `- Hook：${insight.hookAnalysis}`,
+      `- 切点数：${session.boundaries?.length ?? 0}`,
+      "",
+      "## 产品主体",
+      "（请填写产品名称、品类、可被镜头验证的硬指标、口语价格锚点）",
+      "",
+      "## 说明",
+      "由 Cursor Agent（导演）补全本文件后再通过审查。占位符全部替换后才能制作配音。",
+    ].join("\n"), "utf8");
+  }
+
+  if (!(await fileExists(treatmentPath))) {
+    await writeFile(treatmentPath, [
+      "# TREATMENT.md（导演审查稿）",
+      "",
+      "## 导演一句话",
+      insight.summary,
+      "",
+      "## 切点与画面",
+      `参考片共 ${session.boundaries?.length ?? 0} 处画面变化。请为每个 scene-* 段落写明 B-roll / A-roll 承担者。`,
+      "",
+      "## 口播与表演",
+      "（请写明语速、人设、受众称呼、CTA）",
+    ].join("\n"), "utf8");
+  }
+
+  if (!(await fileExists(checklistPath))) {
+    await writeFile(checklistPath, [
+      "# 导演审查清单",
+      "",
+      "- [ ] 已读参考片 ANALYSIS / TIMELINE / transcript",
+      "- [ ] 已查看产品参考图，品类与卖点正确",
+      "- [ ] BRIEF.md 无占位符，产品信息完整",
+      "- [ ] TREATMENT.md 切点与段落职能明确",
+      "- [ ] scenes.json 各段口播已按新产品改写（非机械换词）",
+      "- [ ] 用户已确认可以制作配音",
+    ].join("\n"), "utf8");
+  }
+
+  const archive = session.referenceArchive;
+  await writeFile(requestPath, [
+    "# 导演审查请求",
+    "",
+    "Analysis 已暂停自动配音，等待 Cursor Agent 完成导演审查。",
+    "",
+    "## 素材路径",
+    `- 参考视频：${rel(session.workspaceRoot, session.videoPath)}`,
+    `- 产品参考图：${rel(session.workspaceRoot, session.productReferencePath)}`,
+    `- 转写：${rel(session.workspaceRoot, session.transcript?.path)}`,
+    `- 深读归档：${rel(session.workspaceRoot, archive?.referenceDir)}`,
+    `- ANALYSIS：${rel(session.workspaceRoot, archive?.analysisMarkdownPath)}`,
+    `- TIMELINE：${rel(session.workspaceRoot, archive?.timelineMarkdownPath)}`,
+    "",
+    "## Agent 应编辑的文件（本目录）",
+    "- `BRIEF.md`",
+    "- `TREATMENT.md`",
+    "- `scenes.json`（键名 scene-* 与切点段落一致，勿改 id）",
+    "",
+    "## 完成后",
+    "在 Analysis UI 点击「导演审查通过」，或 POST `/__analysis/director/approve`。",
+    "",
+    `改编说明：${session.adaptationGoal ?? "（未填写）"}`,
+  ].join("\n"), "utf8");
+
+  return {
+    status: "pending",
+    phase: "等待导演审查",
+    dir,
+    requestPath,
+    briefPath,
+    treatmentPath,
+    scenesPath,
+    checklistPath,
+  };
+}
+
+export async function approveDirectorReview(workspaceRoot: string): Promise<readonly string[]> {
+  const package_ = await loadDirectorPackage(workspaceRoot);
+  return validateDirectorPackage(package_);
+}
+
+export async function copyDirectorDocsToAdaptation(workspaceRoot: string, adaptationRoot: string): Promise<void> {
+  const dir = directorReviewDir(workspaceRoot);
+  await mkdir(adaptationRoot, { recursive: true });
+  for (const name of ["BRIEF.md", "TREATMENT.md", "scenes.json"]) {
+    const source = join(dir, name);
+    if (await fileExists(source)) {
+      await copyFile(source, join(adaptationRoot, name));
+    }
+  }
+}

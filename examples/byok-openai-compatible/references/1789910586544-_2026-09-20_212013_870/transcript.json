@@ -1,0 +1,575 @@
+{
+  "format": "hypit.transcript@1",
+  "source": "D:\\program\\hypit\\examples\\byok-openai-compatible\\.hypit\\analysis\\uploads\\1789910586544-_2026-09-20_212013_870.mp4",
+  "language": "zh",
+  "audio_seconds": 20.667,
+  "passages": [
+    {
+      "text": "穿 了 一 個 月 洗 了 好 幾 遍 才 敢 分 享 的 短 袖 高 科 重 麵 料 可 以 立 起 來 麵 料 流 出 不 會 皺 眼 膜 就 平 整 空 間 包 邊 設 計 二 本 針 走 線 上 身 寬 鬆 有 餘 量 麵 料 抗 爭 免 打 理 就 很 省 心 板 型 寬 鬆 去 遮 肉 3 0 多 米 的 價 格 性 價 比 直 接 拉 滿 但 穿 好 看 又 有 型 兄 弟 們 別 猶 豫 還 可 以 當 作 打 底 衝 衝 衝",
+      "start_seconds": 0.051,
+      "end_seconds": 20.17,
+      "words": [
+        {
+          "text": "穿",
+          "start_seconds": 0.051,
+          "end_seconds": 0.151
+        },
+        {
+          "text": "了",
+          "start_seconds": 0.151,
+          "end_seconds": 0.231
+        },
+        {
+          "text": "一",
+          "start_seconds": 0.231,
+          "end_seconds": 0.312
+        },
+        {
+          "text": "個",
+          "start_seconds": 0.312,
+          "end_seconds": 0.412
+        },
+        {
+          "text": "月",
+          "start_seconds": 0.412,
+          "end_seconds": 0.572
+        },
+        {
+          "text": "洗",
+          "start_seconds": 0.572,
+          "end_seconds": 0.692
+        },
+        {
+          "text": "了",
+          "start_seconds": 0.692,
+          "end_seconds": 0.813
+        },
+        {
+          "text": "好",
+          "start_seconds": 0.813,
+          "end_seconds": 0.993
+        },
+        {
+          "text": "幾",
+          "start_seconds": 0.993,
+          "end_seconds": 1.093
+        },
+        {
+          "text": "遍",
+          "start_seconds": 1.093,
+          "end_seconds": 1.233
+        },
+        {
+          "text": "才",
+          "start_seconds": 1.233,
+          "end_seconds": 1.374
+        },
+        {
+          "text": "敢",
+          "start_seconds": 1.374,
+          "end_seconds": 1.514
+        },
+        {
+          "text": "分",
+          "start_seconds": 1.514,
+          "end_seconds": 1.674
+        },
+        {
+          "text": "享",
+          "start_seconds": 1.674,
+          "end_seconds": 1.814
+        },
+        {
+          "text": "的",
+          "start_seconds": 1.814,
+          "end_seconds": 1.915
+        },
+        {
+          "text": "短",
+          "start_seconds": 1.915,
+          "end_seconds": 2.095
+        },
+        {
+          "text": "袖",
+          "start_seconds": 2.095,
+          "end_seconds": 2.716
+        },
+        {
+          "text": "高",
+          "start_seconds": 2.716,
+          "end_seconds": 2.857
+        },
+        {
+          "text": "科",
+          "start_seconds": 2.857,
+          "end_seconds": 2.977
+        },
+        {
+          "text": "重",
+          "start_seconds": 2.977,
+          "end_seconds": 3.117
+        },
+        {
+          "text": "麵",
+          "start_seconds": 3.117,
+          "end_seconds": 3.237
+        },
+        {
+          "text": "料",
+          "start_seconds": 3.237,
+          "end_seconds": 3.438
+        },
+        {
+          "text": "可",
+          "start_seconds": 3.438,
+          "end_seconds": 3.558
+        },
+        {
+          "text": "以",
+          "start_seconds": 3.558,
+          "end_seconds": 3.658
+        },
+        {
+          "text": "立",
+          "start_seconds": 3.658,
+          "end_seconds": 3.798
+        },
+        {
+          "text": "起",
+          "start_seconds": 3.798,
+          "end_seconds": 3.939
+        },
+        {
+          "text": "來",
+          "start_seconds": 3.939,
+          "end_seconds": 4.319
+        },
+        {
+          "text": "麵",
+          "start_seconds": 4.319,
+          "end_seconds": 4.42
+        },
+        {
+          "text": "料",
+          "start_seconds": 4.42,
+          "end_seconds": 4.54
+        },
+        {
+          "text": "流",
+          "start_seconds": 4.54,
+          "end_seconds": 4.68
+        },
+        {
+          "text": "出",
+          "start_seconds": 4.68,
+          "end_seconds": 4.84
+        },
+        {
+          "text": "不",
+          "start_seconds": 4.84,
+          "end_seconds": 4.921
+        },
+        {
+          "text": "會",
+          "start_seconds": 4.921,
+          "end_seconds": 5.061
+        },
+        {
+          "text": "皺",
+          "start_seconds": 5.061,
+          "end_seconds": 5.161
+        },
+        {
+          "text": "眼",
+          "start_seconds": 5.161,
+          "end_seconds": 5.261
+        },
+        {
+          "text": "膜",
+          "start_seconds": 5.261,
+          "end_seconds": 5.422
+        },
+        {
+          "text": "就",
+          "start_seconds": 5.422,
+          "end_seconds": 5.562
+        },
+        {
+          "text": "平",
+          "start_seconds": 5.562,
+          "end_seconds": 5.722
+        },
+        {
+          "text": "整",
+          "start_seconds": 5.722,
+          "end_seconds": 6.884
+        },
+        {
+          "text": "空",
+          "start_seconds": 6.884,
+          "end_seconds": 7.045
+        },
+        {
+          "text": "間",
+          "start_seconds": 7.045,
+          "end_seconds": 7.225
+        },
+        {
+          "text": "包",
+          "start_seconds": 7.225,
+          "end_seconds": 7.385
+        },
+        {
+          "text": "邊",
+          "start_seconds": 7.385,
+          "end_seconds": 7.546
+        },
+        {
+          "text": "設",
+          "start_seconds": 7.546,
+          "end_seconds": 7.746
+        },
+        {
+          "text": "計",
+          "start_seconds": 7.746,
+          "end_seconds": 8.067
+        },
+        {
+          "text": "二",
+          "start_seconds": 8.067,
+          "end_seconds": 8.167
+        },
+        {
+          "text": "本",
+          "start_seconds": 8.167,
+          "end_seconds": 8.307
+        },
+        {
+          "text": "針",
+          "start_seconds": 8.307,
+          "end_seconds": 8.447
+        },
+        {
+          "text": "走",
+          "start_seconds": 8.447,
+          "end_seconds": 8.608
+        },
+        {
+          "text": "線",
+          "start_seconds": 8.608,
+          "end_seconds": 9.209
+        },
+        {
+          "text": "上",
+          "start_seconds": 9.209,
+          "end_seconds": 9.369
+        },
+        {
+          "text": "身",
+          "start_seconds": 9.369,
+          "end_seconds": 9.509
+        },
+        {
+          "text": "寬",
+          "start_seconds": 9.509,
+          "end_seconds": 9.65
+        },
+        {
+          "text": "鬆",
+          "start_seconds": 9.65,
+          "end_seconds": 9.81
+        },
+        {
+          "text": "有",
+          "start_seconds": 9.81,
+          "end_seconds": 9.91
+        },
+        {
+          "text": "餘",
+          "start_seconds": 9.91,
+          "end_seconds": 9.97
+        },
+        {
+          "text": "量",
+          "start_seconds": 9.97,
+          "end_seconds": 10.03
+        },
+        {
+          "text": "麵",
+          "start_seconds": 10.03,
+          "end_seconds": 10.151
+        },
+        {
+          "text": "料",
+          "start_seconds": 10.151,
+          "end_seconds": 10.291
+        },
+        {
+          "text": "抗",
+          "start_seconds": 10.291,
+          "end_seconds": 10.451
+        },
+        {
+          "text": "爭",
+          "start_seconds": 10.451,
+          "end_seconds": 10.572
+        },
+        {
+          "text": "免",
+          "start_seconds": 10.572,
+          "end_seconds": 10.712
+        },
+        {
+          "text": "打",
+          "start_seconds": 10.712,
+          "end_seconds": 10.852
+        },
+        {
+          "text": "理",
+          "start_seconds": 10.852,
+          "end_seconds": 10.972
+        },
+        {
+          "text": "就",
+          "start_seconds": 10.972,
+          "end_seconds": 11.093
+        },
+        {
+          "text": "很",
+          "start_seconds": 11.093,
+          "end_seconds": 11.233
+        },
+        {
+          "text": "省",
+          "start_seconds": 11.233,
+          "end_seconds": 11.453
+        },
+        {
+          "text": "心",
+          "start_seconds": 11.453,
+          "end_seconds": 11.714
+        },
+        {
+          "text": "板",
+          "start_seconds": 11.714,
+          "end_seconds": 11.854
+        },
+        {
+          "text": "型",
+          "start_seconds": 11.854,
+          "end_seconds": 12.034
+        },
+        {
+          "text": "寬",
+          "start_seconds": 12.034,
+          "end_seconds": 12.175
+        },
+        {
+          "text": "鬆",
+          "start_seconds": 12.175,
+          "end_seconds": 12.335
+        },
+        {
+          "text": "去",
+          "start_seconds": 12.335,
+          "end_seconds": 12.475
+        },
+        {
+          "text": "遮",
+          "start_seconds": 12.475,
+          "end_seconds": 12.616
+        },
+        {
+          "text": "肉",
+          "start_seconds": 12.616,
+          "end_seconds": 13.096
+        },
+        {
+          "text": "3",
+          "start_seconds": 13.096,
+          "end_seconds": 13.257
+        },
+        {
+          "text": "0",
+          "start_seconds": 13.257,
+          "end_seconds": 13.357
+        },
+        {
+          "text": "多",
+          "start_seconds": 13.357,
+          "end_seconds": 13.457
+        },
+        {
+          "text": "米",
+          "start_seconds": 13.457,
+          "end_seconds": 13.557
+        },
+        {
+          "text": "的",
+          "start_seconds": 13.557,
+          "end_seconds": 13.638
+        },
+        {
+          "text": "價",
+          "start_seconds": 13.638,
+          "end_seconds": 13.798
+        },
+        {
+          "text": "格",
+          "start_seconds": 13.798,
+          "end_seconds": 13.918
+        },
+        {
+          "text": "性",
+          "start_seconds": 13.918,
+          "end_seconds": 14.098
+        },
+        {
+          "text": "價",
+          "start_seconds": 14.098,
+          "end_seconds": 14.259
+        },
+        {
+          "text": "比",
+          "start_seconds": 14.259,
+          "end_seconds": 14.419
+        },
+        {
+          "text": "直",
+          "start_seconds": 14.419,
+          "end_seconds": 14.519
+        },
+        {
+          "text": "接",
+          "start_seconds": 14.519,
+          "end_seconds": 14.639
+        },
+        {
+          "text": "拉",
+          "start_seconds": 14.639,
+          "end_seconds": 14.76
+        },
+        {
+          "text": "滿",
+          "start_seconds": 14.76,
+          "end_seconds": 15.281
+        },
+        {
+          "text": "但",
+          "start_seconds": 15.281,
+          "end_seconds": 15.441
+        },
+        {
+          "text": "穿",
+          "start_seconds": 15.441,
+          "end_seconds": 15.601
+        },
+        {
+          "text": "好",
+          "start_seconds": 15.601,
+          "end_seconds": 15.762
+        },
+        {
+          "text": "看",
+          "start_seconds": 15.762,
+          "end_seconds": 15.882
+        },
+        {
+          "text": "又",
+          "start_seconds": 15.882,
+          "end_seconds": 16.002
+        },
+        {
+          "text": "有",
+          "start_seconds": 16.002,
+          "end_seconds": 16.182
+        },
+        {
+          "text": "型",
+          "start_seconds": 16.182,
+          "end_seconds": 16.804
+        },
+        {
+          "text": "兄",
+          "start_seconds": 16.804,
+          "end_seconds": 16.964
+        },
+        {
+          "text": "弟",
+          "start_seconds": 16.964,
+          "end_seconds": 17.064
+        },
+        {
+          "text": "們",
+          "start_seconds": 17.064,
+          "end_seconds": 17.204
+        },
+        {
+          "text": "別",
+          "start_seconds": 17.204,
+          "end_seconds": 17.325
+        },
+        {
+          "text": "猶",
+          "start_seconds": 17.325,
+          "end_seconds": 17.465
+        },
+        {
+          "text": "豫",
+          "start_seconds": 17.465,
+          "end_seconds": 17.605
+        },
+        {
+          "text": "還",
+          "start_seconds": 17.605,
+          "end_seconds": 17.746
+        },
+        {
+          "text": "可",
+          "start_seconds": 17.746,
+          "end_seconds": 17.826
+        },
+        {
+          "text": "以",
+          "start_seconds": 17.826,
+          "end_seconds": 17.906
+        },
+        {
+          "text": "當",
+          "start_seconds": 17.906,
+          "end_seconds": 18.046
+        },
+        {
+          "text": "作",
+          "start_seconds": 18.046,
+          "end_seconds": 18.166
+        },
+        {
+          "text": "打",
+          "start_seconds": 18.166,
+          "end_seconds": 18.347
+        },
+        {
+          "text": "底",
+          "start_seconds": 18.347,
+          "end_seconds": 18.788
+        },
+        {
+          "text": "衝",
+          "start_seconds": 18.788,
+          "end_seconds": 19.429
+        },
+        {
+          "text": "衝",
+          "start_seconds": 19.429,
+          "end_seconds": 20.15
+        },
+        {
+          "text": "衝",
+          "start_seconds": 20.15,
+          "end_seconds": 20.17
+        }
+      ]
+    }
+  ]
+}

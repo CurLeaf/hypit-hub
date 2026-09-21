@@ -52,16 +52,15 @@
         "baseUrl": "https://metaso.cn/api/minimax",
         "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
         "defaultConcurrency": 2,
-        "videoAdapter": "openai-videos",
+        "uploadMode": "minimax-multipart",
+        "videoAdapter": "minimax-v2",
         "models": {
           "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
         },
         "routes": {
-          "image": "/images/generations",
-          "imageEdits": "/images/edits",
-          "speech": "/audio/speech",
-          "videoSubmit": "/videos",
-          "videoStatus": "/videos/{id}"
+          "fileUpload": "/v1/files/upload",
+          "videoSubmit": "/v2/video_generation",
+          "videoStatus": "/v2/query/video_generation/{id}"
         }
       }
     }

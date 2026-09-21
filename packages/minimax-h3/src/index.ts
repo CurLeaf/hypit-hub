@@ -114,17 +114,6 @@ const minimaxH3DurationNote = "`duration` is a whole number of seconds between 4
 const minimaxH3ResolutionNote = "`768P` and `2K` are the model's own tiers: H3-Base renders at 768p and H3-Regenerate-2K re-renders from the original context.";
 
 export const minimaxH3MarkupSurfaces = [
-    declaration("text-video", "TextVideo", [], {
-      summary: "Generates one video Artifact from a Text prompt with the MiniMax H3 model.",
-      attributes: [...minimaxH3Common, minimaxH3AspectRatio],
-      ports: minimaxH3VideoPorts,
-      example: '<h3:TextVideo id="idea" prompt={prompt} duration="6" resolution="768P" aspect-ratio="9:16"/>',
-      notes: [
-        minimaxH3DurationNote,
-        minimaxH3ResolutionNote,
-        "The element takes no children and no text content.",
-      ],
-    }),
     declaration("frame-video", "FrameVideo", ["firstFrame", "lastFrame"], {
       summary: "Generates one video Artifact from a first frame, a last frame, or both with the MiniMax H3 model.",
       attributes: [
@@ -164,17 +153,16 @@ export const minimaxH3MarkupSurfaces = [
       ],
       ports: minimaxH3VideoPorts,
       example: [
-        '<h3:ReferenceVideo id="montage" prompt={montagePrompt} duration="8" resolution="768P" aspect-ratio="9:16">',
-        "  <h3:Reference image={person.image}/>",
-        "  <h3:Reference video={gesture.video}/>",
+        '<h3:ReferenceVideo id="speaker-take" prompt={speakerPrompt} duration="6" resolution="768P" aspect-ratio="9:16">',
+        "  <h3:Reference image={presenter.image}/>",
+        "  <h3:Reference audio={voice-sample}/>",
         "</h3:ReferenceVideo>",
       ].join("\n"),
       notes: [
         minimaxH3DurationNote,
         minimaxH3ResolutionNote,
         "`Reference` carries exactly one of `image`, `video` or `audio`, and is empty.",
-        "The element requires at least one `Reference`, and accepts at most 9 image, 3 video and 3 audio references and 12 in total.",
-        "An audio `Reference` requires an image or video `Reference` beside it.",
+        "The element requires both a `Reference image` and a `Reference audio`, and accepts at most 9 image, 3 video and 3 audio references and 12 in total.",
         "The element carries no text content.",
       ],
     }),

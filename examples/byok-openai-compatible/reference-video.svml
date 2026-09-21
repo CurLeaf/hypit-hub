@@ -18,7 +18,7 @@
 
   <h3:ReferenceVideo id="speaker-take" prompt={speaker-prompt} duration="6"
     resolution="768P" aspect-ratio="9:16">
-    <h3:Reference image={presenter-reference.image}/>
+    <h3:Reference image={presenter-reference}/>
     <h3:Reference audio={voice-reference}/>
   </h3:ReferenceVideo>
 

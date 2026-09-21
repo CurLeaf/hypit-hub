@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 export type ChatGatewayConfig = {
   readonly baseUrl: string;
@@ -38,16 +38,37 @@ export async function loadChatGateway(runtimePath: string | undefined, workspace
   }
 }
 
+function imageMediaType(path: string): string {
+  const ext = extname(path).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".avif") return "image/avif";
+  return "image/jpeg";
+}
+
+async function imageDataUrl(path: string): Promise<string> {
+  const bytes = await readFile(path);
+  return `data:${imageMediaType(path)};base64,${bytes.toString("base64")}`;
+}
+
 export async function chatCompletion(input: {
   readonly gateway: ChatGatewayConfig;
   readonly system: string;
   readonly user: string;
+  readonly imagePath?: string;
 }): Promise<string> {
   const secret = process.env[input.gateway.apiKeyEnv]?.trim();
   if (secret === undefined || secret.length === 0) {
     throw new Error(`缺少 ${input.gateway.apiKeyEnv}，无法调用对话模型`);
   }
   const base = input.gateway.baseUrl.replace(/\/+$/u, "");
+  const userContent = input.imagePath === undefined
+    ? input.user
+    : [
+      { type: "text", text: input.user },
+      { type: "image_url", image_url: { url: await imageDataUrl(input.imagePath) } },
+    ];
   const response = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
@@ -59,7 +80,7 @@ export async function chatCompletion(input: {
       temperature: 0.4,
       messages: [
         { role: "system", content: input.system },
-        { role: "user", content: input.user },
+        { role: "user", content: userContent },
       ],
     }),
     signal: AbortSignal.timeout(input.gateway.requestTimeoutMs),

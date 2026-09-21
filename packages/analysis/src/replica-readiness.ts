@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type { AdaptationView, AnalysisSessionView, OfficialPathReportView } from "./shared.js";
 import { adaptationDir } from "./prepare-adaptation.js";
+import { refreshScaffoldCheck } from "./workflow.js";
 import {
   assertOfficialH3Credential,
   assertOfficialLlmGateway,
@@ -73,11 +74,16 @@ export async function checkReplicationReadiness(
   const issues = report.checks.filter((check) => !check.ok).map((check) => `${check.label}：${check.detail}`);
 
   if (options?.forBuild === true && session.scaffold !== undefined) {
-    const assetsDir = join(session.scaffold.productionDir, "assets");
+    const scaffold = session.scaffold.checkOk === false
+      ? await refreshScaffoldCheck(session.workspaceRoot, session.scaffold)
+      : session.scaffold;
+    const assetsDir = join(scaffold.productionDir, "assets");
     const useVideoAroll = session.videoAroll ?? true;
     const capabilities = await loadRuntimeCapabilities(runtimePath);
-    if (!(await fileExists(join(assetsDir, "generated-speech.wav")))) {
-      issues.push("工程内缺少配音素材 generated-speech.wav，请重新点击「一键复刻」");
+    const hasAdaptedSpeech = await fileExists(join(assetsDir, "generated-speech.wav"));
+    const hasVoiceSample = await fileExists(join(assetsDir, "voice-reference.wav"));
+    if (!hasAdaptedSpeech && !hasVoiceSample) {
+      issues.push("工程内缺少改编配音素材（generated-speech.wav 或 voice-reference.wav），请重新点击「一键复刻」");
     }
     if (useVideoAroll && !capabilities.fishSpeech && !(await fileExists(join(assetsDir, "voice-reference.wav")))) {
       issues.push("工程内缺少 H3 音色样本 voice-reference.wav，请重新点击「一键复刻」");
@@ -86,8 +92,8 @@ export async function checkReplicationReadiness(
     if (productAssets.length === 0) {
       issues.push("工程内缺少参考图素材 product-reference.*，请重新点击「一键复刻」");
     }
-    if (session.scaffold.checkOk === false) {
-      issues.push(`工程校验未通过：${session.scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
+    if (scaffold.checkOk === false) {
+      issues.push(`工程校验未通过：${scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
     }
   }
 

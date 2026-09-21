@@ -88,6 +88,20 @@ export type ScaffoldView = {
   readonly checkSummary?: string;
 };
 
+export type DirectorReviewStatus = "pending" | "approved";
+
+export type DirectorReviewView = {
+  readonly status: DirectorReviewStatus;
+  readonly phase?: string;
+  readonly dir: string;
+  readonly requestPath: string;
+  readonly briefPath: string;
+  readonly treatmentPath: string;
+  readonly scenesPath: string;
+  readonly checklistPath: string;
+  readonly approvedAt?: number;
+};
+
 export type AdaptationView = {
   readonly status: "idle" | "running" | "complete" | "error";
   readonly phase?: string;
@@ -152,6 +166,7 @@ export type AnalysisSessionView = {
   readonly build?: BuildJobView;
   readonly adaptation?: AdaptationView;
   readonly adaptationGoal?: string;
+  readonly directorReview?: DirectorReviewView;
 };
 
 export type OfficialPathCheckView = {

@@ -14,7 +14,7 @@
 
   <text:Value id="prompt">Vertical 9:16 product promo still. Feature the supplied product reference prominently on a clean studio desk with soft editorial lighting. Preserve the exact product appearance from the reference image. No readable text in image.</text:Value>
   <gpt:Image id="hero" prompt={prompt} aspect-ratio="9:16" resolution="1K">
-    <gpt:Reference image={product-reference.image}/>
+    <gpt:Reference image={product-reference}/>
   </gpt:Image>
 
   <time:Clock id="clock" frame-rate="30"/>

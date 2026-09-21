@@ -1,13 +1,19 @@
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
+import {
+  canStartAdaptation,
+  copyDirectorDocsToAdaptation,
+  loadDirectorPackage,
+} from "./director-review.js";
 import { buildAdaptationScenes } from "./scenes-from-structure.js";
 import { adaptScenesForProduct } from "./script-adapt.js";
 import { extractReferenceAudio, extractVoiceReferenceSample } from "./scaffold-ugc.js";
+import type { ScenePlan } from "./scene-plan.js";
 import { resolveSpeechAudio } from "./speech-synth.js";
 import { generateBrief, generateInsight, generateTreatment } from "./workflow.js";
 
-import type { AdaptationView, AnalysisSessionView } from "./shared.js";
+import type { AdaptationView, AnalysisSessionView, BriefView, TreatmentView } from "./shared.js";
 
 const ADAPTATION_SUBDIR = ".hypit/analysis/adaptation";
 
@@ -15,18 +21,34 @@ export function adaptationDir(workspaceRoot: string): string {
   return join(workspaceRoot, ADAPTATION_SUBDIR);
 }
 
+function applyDirectorScenes(
+  baseScenes: readonly ScenePlan[],
+  directorScenes: readonly { readonly id: string; readonly text: string }[],
+): readonly ScenePlan[] {
+  const textById = new Map(directorScenes.map((scene) => [scene.id, scene.text]));
+  return baseScenes.map((scene) => ({
+    ...scene,
+    text: textById.get(scene.momentId) ?? textById.get(scene.id) ?? scene.text,
+  }));
+}
+
 export async function prepareProductAdaptation(input: {
   readonly session: AnalysisSessionView;
   readonly runtimePath?: string;
   readonly goal?: string;
   readonly onPhase?(phase: string): void;
+  readonly skipDirectorGate?: boolean;
 }): Promise<AdaptationView> {
   const { session } = input;
   if (session.analysisPath === undefined) throw new Error("请先完成参考视频分析");
   if (session.productReferencePath === undefined) throw new Error("请先上传参考图");
+  if (input.skipDirectorGate !== true && !canStartAdaptation(session.directorReview)) {
+    throw new Error("导演审查尚未通过。请在 Cursor 中编辑 .hypit/analysis/director/ 下的 BRIEF、TREATMENT、scenes.json，再在 UI 点击「导演审查通过」。");
+  }
 
   const dir = adaptationDir(session.workspaceRoot);
   await mkdir(dir, { recursive: true });
+  const directorPackage = await loadDirectorPackage(session.workspaceRoot);
 
   input.onPhase?.("解读参考片…");
   const insight = await generateInsight({
@@ -36,37 +58,52 @@ export async function prepareProductAdaptation(input: {
   });
 
   input.onPhase?.("撰写 Brief…");
-  const brief = session.brief ?? await generateBrief({
-    session,
-    insight,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
-    requireLlm: true,
-  });
+  let brief: BriefView;
+  if (directorPackage.briefMarkdown !== undefined && directorPackage.briefMarkdown.trim().length > 0) {
+    brief = { markdown: directorPackage.briefMarkdown };
+  } else {
+    brief = session.brief ?? await generateBrief({
+      session,
+      insight,
+      goal: input.goal,
+      runtimePath: input.runtimePath,
+      requireLlm: true,
+    });
+  }
   await writeFile(join(dir, "BRIEF.md"), `${brief.markdown.trim()}\n`, "utf8");
 
   input.onPhase?.("撰写 Treatment…");
-  const treatment = session.treatment ?? await generateTreatment({
-    session,
-    insight,
-    brief,
-    runtimePath: input.runtimePath,
-    requireLlm: true,
-  });
+  let treatment: TreatmentView;
+  if (directorPackage.treatmentMarkdown !== undefined && directorPackage.treatmentMarkdown.trim().length > 0) {
+    treatment = { markdown: directorPackage.treatmentMarkdown };
+  } else {
+    treatment = session.treatment ?? await generateTreatment({
+      session,
+      insight,
+      brief,
+      runtimePath: input.runtimePath,
+      requireLlm: true,
+    });
+  }
   await writeFile(join(dir, "TREATMENT.md"), `${treatment.markdown.trim()}\n`, "utf8");
 
   input.onPhase?.("按 Brief/Treatment 改写口播…");
   const baseScenes = buildAdaptationScenes(session, insight);
-  const adaptedScenes = await adaptScenesForProduct({
-    session,
-    insight,
-    brief,
-    treatment,
-    scenes: baseScenes,
-    goal: input.goal,
-    runtimePath: input.runtimePath,
-    requireSuccess: true,
-  });
+  let adaptedScenes: readonly ScenePlan[];
+  if (directorPackage.scenes.length > 0) {
+    adaptedScenes = applyDirectorScenes(baseScenes, directorPackage.scenes);
+  } else {
+    adaptedScenes = await adaptScenesForProduct({
+      session,
+      insight,
+      brief,
+      treatment,
+      scenes: baseScenes,
+      goal: input.goal,
+      runtimePath: input.runtimePath,
+      requireSuccess: true,
+    });
+  }
   const spokenText = adaptedScenes
     .map((scene) => scene.text.replace(/\s+/gu, ""))
     .filter((text) => text.length > 0)
@@ -97,6 +134,7 @@ export async function prepareProductAdaptation(input: {
     null,
     2,
   )}\n`, "utf8");
+  await copyDirectorDocsToAdaptation(session.workspaceRoot, dir);
 
   return {
     status: "complete",

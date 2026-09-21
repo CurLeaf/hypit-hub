@@ -1,0 +1,87 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import from="@hypit/script@1"/>
+  <import as="text" from="@hypit/text@1"/>
+  <import as="asset" from="@hypit/media@1"/>
+  <import as="gpt" from="@hypit/gpt-image@1"/>
+  <import as="h3" from="@hypit/minimax-h3@1"/>
+  <import as="speaker-kit" source="@hypit/seedance-kits/speaker"/>
+  <import as="pipeline" from="@hypit/media-pipeline@1"/>
+  <import as="whisperx" from="@hypit/whisperx@1"/>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="sound" from="@hypit/sound@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>
+  <import as="caption-fine" from="@hypit/caption-fine@1"/>
+  <import as="fonts" from="@hypit/fonts-open@1"/>
+  <import as="spatial" from="@hypit/spatial@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="render" from="@hypit/render-hyperframes@1"/>
+  <import as="recipes" source="../recipes.svs"/>
+
+  <script id="story">
+    <segment_1>
+      <HOST>用了三個月吹 || 了幾十次才敢 || 分享的吹風機 || ，風速一開頭 || 髮直接立起來 || ，兩億負離子 || 吹完頭髮順滑 || 不毛躁，一體 || 成型風道加雙 || 層降噪磁吸風 || 嘴，機身輕握 || 著不累手吹完 || 不用梳就很省 || 心，一百多的 || 價格性價比直 || 接拉滿，但吹 || 得又快又順， || 姐妹們別猶豫 || ，還可以當作 || 造型工具吹瀏 || 海，衝衝衝
+    </segment_1>
+  </script>
+
+
+
+  <asset:Image id="product-reference" src="./../assets/product-reference.png"/>
+
+  <asset:Audio id="presenter-voice" src="./../assets/voice-reference.wav"/>
+  <text:Value id="segment-1-prompt">Vertical 9:16 UGC-style smartphone photograph, shot handheld in a real lived-in bathroom, rear camera look with slight lens breathing and mild noise, no gimbal polish. A 20-something East Asian man, slightly damp dark hair pushed back, visible skin texture, no beauty retouching, standing in front of a mirror-free tiled wall so nothing reads as a reflection gag. He holds a matte-finish modern hair dryer in his right hand, product dead center of frame at chest height, matte barrel angled up toward his hair, fingers wrapped naturally around the handle with a relaxed grip that reads as light weight. The magnetic nozzle is clearly visible on the barrel and slightly offset, showing the seam between nozzle and body; a short coiled power cord hangs loose. His left hand lifts a strand of hair near his temple to show it standing up, catching window light. Background: warm off-white tiles, shower curtain edge, a couple of everyday objects on the counter (folded towel, small bottle) for authenticity, slightly soft focus. Lighting is natural window light from frame left plus a soft ceiling light, minor highlight on the product's edge, realistic shadows. Slight motion blur on the lifted hair strand only. Frame feels like an unedited self-taken clip, subject casual and mid-speech, mouth slightly open. Absolutely no captions, no subtitles, no readable text, no logos, no watermarks, no UI overlays, no price tags, no packaging with visible lettering, no illustrations or 3D renders. Preserve the exact product or subject appearance from the supplied reference image.</text:Value>
+  <gpt:Image id="segment-1" prompt={segment-1-prompt} aspect-ratio="9:16" resolution="1K">
+    <gpt:Reference image={product-reference}/>
+  </gpt:Image>
+
+  <time:Clock id="clock" frame-rate="30"/>
+  <spatial:Canvas id="vertical" width="1280" height="960"/>
+  <spatial:Frame id="speech-frame" within={vertical} left="0%" top="0%" right="100%" bottom="100%"/>
+  <spatial:Frame id="broll-frame" within={vertical} left="8%" top="12%" right="92%" bottom="55%"/>
+  <spatial:Extent id="scene-extent" width="1280" height="960"/>
+
+  <text:Value id="segment_1-action">Deliver this passage as an engaged vertical social-video product presenter. Natural lip-sync, lively emphasis, small posture shifts between phrases. Keep the product/subject from the reference image clearly visible.</text:Value>
+  <text:Render id="segment_1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.segment_1.dialogue}/>
+    <text:Set name="action" text={segment_1-action}/>
+  </text:Render>
+  <h3:ReferenceVideo id="segment_1-take" prompt={segment_1-prompt} duration="15"
+    resolution="768P" aspect-ratio="9:16">
+    <h3:Reference image={product-reference}/>
+    <h3:Reference audio={presenter-voice}/>
+  </h3:ReferenceVideo>
+  <pipeline:Normalize id="segment_1-media" source={segment_1-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
+  <whisperx:SemanticTake id="segment_1-semantic" narrative={story}
+    segment={story.segment.segment_1} media={segment_1-media.media} language="zh"/>
+
+
+
+  <time:Timeline id="speech" clock={clock}>
+    <time:Take source={segment_1-semantic.take}/>
+  </time:Timeline>
+
+  <sound:Style id="speech-sound-style"/>
+  <sound:Track id="speech-sound" timeline={speech.timeline}>
+    <sound:Use style={speech-sound-style}/>
+  </sound:Track>
+
+  <media-track:Track id="visual" timeline={speech.timeline} canvas={vertical}>
+    <media-track:Item id="segment_1-hero" media={segment_1-media.media}
+      during={story.segment.segment_1} frame={speech-frame} appearance={recipes.media.hero}/>
+
+  </media-track:Track>
+
+  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
+  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
+  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
+    <caption-fine:Use style={caption-style}/>
+  </caption-fine:Track>
+
+  <film:Film id="main" canvas={vertical} timeline={speech.timeline} appearance={recipes.film.vertical}>
+    <film:Track source={visual.visual}/>
+    <film:Track source={speech-sound.audio}/>
+    <film:Track source={captions.track}/>
+  </film:Film>
+  <render:Video id="final" composition={main.composition} timeline={speech.timeline}/>
+</svml>

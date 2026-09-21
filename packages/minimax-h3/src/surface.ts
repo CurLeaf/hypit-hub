@@ -56,10 +56,6 @@ function common(element: StructuredElement, resolveReference: (path: string) => 
   return { prompt, ports };
 }
 
-export const decodeMinimaxTextVideoSurface: StructuredSurfaceHandler = ({ element, resolveReference }) => {
-  exact(element, ["id", "prompt", "duration", "resolution", "aspect-ratio"], ["id", "prompt", "duration"]); empty(element);
-  const { prompt, ports } = common(element, resolveReference); return output(element, prompt, ports, []);
-};
 export const decodeMinimaxFrameVideoSurface: StructuredSurfaceHandler = ({ element, resolveReference }) => {
   exact(element, ["id", "prompt", "duration", "resolution", "first-frame", "last-frame"], ["id", "prompt", "duration"]); empty(element);
   assert(element.attributes["first-frame"] !== undefined || element.attributes["last-frame"] !== undefined,
@@ -79,8 +75,8 @@ export const decodeMinimaxReferenceVideoSurface: StructuredSurfaceHandler = ({ e
     assert(used.length === 1, `${child.name} requires exactly one of image, video or audio`); exact(child, [used[0]!], [used[0]!]); empty(child);
     const role = used[0]!; const [port] = mapping[role]; media.push({ port, role, source: mediaRef(child, role, role, resolveReference) });
   }
-  assert(media.length > 0, `${element.name} requires at least one Reference`);
-  assert(!media.some((item) => item.role === "audio") || media.some((item) => item.role === "image" || item.role === "video"), `${element.name} reference audio requires an image or video companion`);
+  assert(media.some((item) => item.role === "image"), `${element.name} requires a Reference image`);
+  assert(media.some((item) => item.role === "audio"), `${element.name} requires a Reference audio`);
   for (const port of ["referenceImage", "referenceVideo", "referenceAudio"] as const) assert(media.filter((item) => item.port === port).length <= generationPort(minimaxH3Endpoints.video!.ports, port).maxItems, `${element.name} has too many ${port} references`);
   assert(media.length <= 12, `${element.name} accepts at most 12 total references`);
   return output(element, prompt, ports, media);

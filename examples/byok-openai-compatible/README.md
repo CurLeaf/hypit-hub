@@ -48,14 +48,8 @@ node bin/hypit.mjs build examples/byok-openai-compatible/minimal.svrun --workspa
 | `minimal.svrun` | `gpt-image-2` via `gateway.default` | One still image + five-second local render |
 | `reference-image.svrun` | `gpt-image-2` via `gateway.default` | Product reference image + prompt → image edit → five-second render |
 | `reference-video.svrun` | `MiniMax-H3` via `gateway.minimax` | Reference image + voice sample → H3 talking-head video |
-| `minimax-video.svrun` | `minimax-h3` via `gateway.minimax` | Six-second AI video via `H3_VIDEO_API_KEY` |
 
-MiniMax video example:
-
-```bash
-node bin/hypit.mjs plan examples/byok-openai-compatible/minimax-video.svrun --workspace examples/byok-openai-compatible
-node bin/hypit.mjs build examples/byok-openai-compatible/minimax-video.svrun --workspace examples/byok-openai-compatible --follow
-```
+H3 video generation requires a **reference image and reference audio**; prompt-only text-to-video is not supported in this example.
 
 ## Replica workflow (reference video + product image)
 
@@ -64,8 +58,10 @@ The Analysis UI (`hypit analysis`) supports the official adaptation path:
 1. Upload a **reference video** → analyze why it works (ANALYSIS / TIMELINE)
 2. Upload a **reference image** (product or presenter) in the sidebar
 3. Fill **改编说明** with your product name, selling points, and audience
-4. Enable **MiniMax H3 口播** (default when a reference image is present)
-5. Click **一键复刻** → generates `productions/replica-*/` with:
+4. **Director review (Cursor Agent):** edit `.hypit/analysis/director/BRIEF.md`, `TREATMENT.md`, `scenes.json` — see `AGENTS.md`
+5. Click **导演审查通过** in Analysis UI → TTS adaptation runs
+6. Enable **MiniMax H3 口播** (default when a reference image is present)
+7. Click **一键复刻** → generates `productions/replica-*/` with:
    - **Script**: chat model rewrites dialogue (keeps viral structure, new product copy)
    - **Speech**: `tts-1` via `gateway.default` (`HYPIT_TTS_MODEL`)
    - **A-roll**: `h3:ReferenceVideo` (reference image + TTS timbre sample + new dialogue)
@@ -98,8 +94,7 @@ Requires `H3_VIDEO_API_KEY`, `assets/product-reference.jpg`, and `assets/voice-r
 
 - **Text-to-image** uses `POST /images/generations` with `prompt`, `size`, and `model`.
 - **Image + reference** uploads media to `POST /files`, then uses `POST /images/edits` with `reference_images`.
-- **MiniMax H3 ReferenceVideo** uses `POST /videos` with `reference_image_urls`, `reference_audios`, `prompt`, `seconds`, etc.
-- **Other videos** use `POST /videos` and poll `GET /videos/{id}` by default.
+- **MiniMax H3 ReferenceVideo** uses `POST /videos` with `reference_image_urls`, `reference_audios`, `prompt`, `seconds`, etc. Both reference image and reference audio are required.
 - If your gateway exposes async jobs at `/tasks/{id}`, set `videoAdapter` to `async-tasks` and
   adjust `routes.videoStatus` accordingly.
 - Unsupported capabilities are reported by `plan` before any paid call is submitted.

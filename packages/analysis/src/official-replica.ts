@@ -19,6 +19,13 @@ export type OfficialPathReport = {
 
 const DEFAULT_SCENE_PROMPT_MARK = "Chinese product promo scene";
 
+function hasOfficialTtsVoice(svml: string): boolean {
+  return svml.includes("generated-speech")
+    || svml.includes('id="voice-reference"')
+    || svml.includes('id="presenter-voice"')
+    || svml.includes("fish:VoiceDesign");
+}
+
 export function isDefaultScenePrompt(prompt: string): boolean {
   return prompt.includes(DEFAULT_SCENE_PROMPT_MARK)
     || prompt.startsWith("Vertical 9:16 short-form social video frame, cinematic lighting, clean composition.");
@@ -61,14 +68,14 @@ export function validateOfficialSvml(
     {
       id: "product-reference",
       label: "参考图写入工程",
-      ok: svml.includes('id="product-reference"') || svml.includes("product-reference.image"),
+      ok: svml.includes('id="product-reference"'),
       detail: "应含 assets/product-reference 与 gpt/H3 Reference 绑定",
     },
     {
       id: "tts-audio",
       label: "TTS 改编配音",
-      ok: svml.includes("generated-speech") || !options.requireProductReference,
-      detail: "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
+      ok: hasOfficialTtsVoice(svml) || !options.requireProductReference,
+      detail: "官方路径使用 TTS 音色样本（voice-reference / presenter-voice / fish:VoiceDesign），而非 reference-audio（参考片原声）",
     },
     {
       id: "h3-aroll",
@@ -85,7 +92,7 @@ export function validateOfficialSvml(
     {
       id: "gpt-reference",
       label: "B-roll 参考图 edits",
-      ok: svml.includes("<gpt:Reference image={product-reference.image}/>"),
+      ok: svml.includes("<gpt:Reference image={product-reference}/>"),
       detail: "分镜图应通过 gpt:Reference 传入产品参考图",
     },
     {
@@ -158,8 +165,22 @@ export async function buildOfficialPathReport(input: {
       : "请在「生成」页上传产品/人物参考图",
   });
 
+  const review = input.session.directorReview;
+  const reviewOk = !hasReference || review?.status === "approved";
+  checks.push({
+    id: "director-review",
+    label: "导演审查已通过",
+    ok: reviewOk,
+    detail: review?.status === "approved"
+      ? "Agent 已审 BRIEF / Treatment / 口播"
+      : hasReference
+        ? "请先在 Cursor 编辑 .hypit/analysis/director/ 并点击「导演审查通过」"
+        : "上传参考图后启用",
+  });
+
   const adapt = input.session.adaptation;
   const adaptOk = hasReference
+    && reviewOk
     && adapt?.status === "complete"
     && adapt.generatedSpeechPath !== undefined
     && adapt.productReferenceSource === input.session.productReferencePath;
@@ -173,7 +194,9 @@ export async function buildOfficialPathReport(input: {
         ? (adapt.error ?? "制作失败")
         : adaptOk
           ? "TTS 口播与 H3 音色样本已生成"
-          : "上传参考图并完成分析后自动制作，或点击「开始制作配音」",
+          : reviewOk
+            ? "导演审查通过后点击「开始制作配音」"
+            : "请先完成导演审查",
   });
 
   if (input.forBuild === true) {

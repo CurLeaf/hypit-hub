@@ -9,6 +9,7 @@ import { compileWireRequest, generationTypes, sealGeneratedVideoSet } from "@hyp
 import type { BlobRef, GenerationRequest } from "@hypit/generation";
 
 import type { OpenAiCompatibleClient } from "./client.js";
+import { createMinimaxV2VideoEndpoint } from "./minimax-v2.js";
 import { mappingForCapability, openAiCompatibleMappings } from "./mappings.js";
 import { uploadArtifactUrl } from "./upload.js";
 
@@ -70,12 +71,19 @@ export function createVideoEndpoint(
   client: OpenAiCompatibleClient,
   models: Readonly<Record<string, string>>,
   options: {
-    readonly videoAdapter: "openai-videos" | "async-tasks";
+    readonly videoAdapter: "openai-videos" | "async-tasks" | "minimax-v2";
     readonly pollIntervalMs: number;
     readonly operationTimeoutMs: number;
     readonly modelFor: (request: EndpointRequest) => string;
   },
 ): AsyncEndpoint {
+  if (options.videoAdapter === "minimax-v2") {
+    return createMinimaxV2VideoEndpoint(client, {
+      pollIntervalMs: options.pollIntervalMs,
+      operationTimeoutMs: options.operationTimeoutMs,
+      modelFor: (context) => options.modelFor(context.need),
+    });
+  }
   const resolveArtifact = async (
     artifact: BlobRef,
     resources: EndpointStartContext["resources"],

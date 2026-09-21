@@ -90,12 +90,13 @@ export async function buildScenePrompts(input: {
     }
     return result;
   }
+  const sceneIds = input.scenes.map((scene) => scene.momentId);
   try {
     const content = await chatCompletion({
       gateway,
       system: [
         "你是视频美术指导。根据参考片分析与导演 Treatment，为每个场景写 gpt-image 英文 prompt。",
-        "输出严格 JSON 对象：键为 scene-1、scene-2…，值为 prompt 字符串。",
+        "输出严格 JSON 对象：键必须与输入 scenes 的 id 完全一致（" + sceneIds.join("、") + "），值为 prompt 字符串。",
         "要求：竖屏 9:16、无可读文字、具体视觉锚点、符合 " + input.formatId + " 格式气质。",
       ].join("\n"),
       user: JSON.stringify({

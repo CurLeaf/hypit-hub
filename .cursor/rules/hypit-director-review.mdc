@@ -1,0 +1,31 @@
+---
+description: Hypit 爆款复刻导演审查协议（Analysis + BYOK 项目）
+globs: examples/byok-openai-compatible/**
+alwaysApply: false
+---
+
+# Hypit 导演审查
+
+当用户在 `examples/byok-openai-compatible` 做爆款复刻时，你是导演，不是快捷生成器。
+
+## 必做流程
+
+1. 读参考片归档：`.hypit/analysis/` 与 `references/*/ANALYSIS.md`、`TIMELINE.md`、`transcript.json`
+2. 查看产品参考图（`.hypit/analysis/uploads/` 或 `director/REVIEW_REQUEST.md` 中的路径）
+3. 编辑 `.hypit/analysis/director/`：
+   - `BRIEF.md`：补全产品名、卖点、受众、价格锚点；**删除所有【待替换】【待填】占位符**
+   - `TREATMENT.md`：按切点写清每段画面承担者（A-roll / B-roll）
+   - `scenes.json`：按 `scene-*` id 改写各段口播；**禁止机械换词**，卖点须可被镜头验证
+4. 向用户展示改写后的口播摘要，等用户确认
+5. 告知用户在 Analysis UI 点击「导演审查通过，开始制作配音」
+
+## 禁止
+
+- 不要在导演审查未完成时建议点击「一键复刻」或自动 TTS
+- 不要跳过 `scenes.json` 多段结构（有切点时应保留多个 scene-*）
+- 不要编造无法从参考图推断的规格参数
+
+## 通过后
+
+- 用户确认配音后，再 `hypit plan` / `hypit build`
+- 审片时对照 TIMELINE 切点与字幕时机

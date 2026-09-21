@@ -62,6 +62,93 @@ a:hover { text-decoration: underline; }
 .btn:hover { border-color: var(--text-3); }
 .btn-primary { background: var(--brand); border-color: transparent; color: white; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary.btn-busy { position: relative; }
+
+.create-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 100%;
+  padding-bottom: 8px;
+}
+
+.create-action-bar {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-raised);
+}
+.create-action-bar-hint {
+  border-color: color-mix(in srgb, var(--brand) 25%, var(--line));
+}
+.create-action-bar-running {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel-raised));
+}
+.create-action-bar-error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel-raised));
+}
+.create-action-bar-success {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+  background: color-mix(in srgb, var(--ok) 8%, var(--panel-raised));
+}
+.create-action-bar-focus {
+  animation: create-action-pulse 1.2s ease;
+}
+.create-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.create-action-headline {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.create-action-detail {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+.create-action-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--warn) 25%, transparent);
+  border-top-color: var(--warn);
+  animation: create-action-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.create-action-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 12px;
+  padding: 12px 0 4px;
+  background: linear-gradient(180deg, transparent 0%, var(--panel) 28%);
+}
+.create-action-footer .btn-primary {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+.create-action-footer .status {
+  margin: 0;
+}
+
+@keyframes create-action-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes create-action-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  35% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent); }
+}
 
 .layout {
   display: grid;

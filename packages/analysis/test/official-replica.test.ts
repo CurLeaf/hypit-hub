@@ -9,11 +9,28 @@ test("validateOfficialSvml accepts official ugc speaker scaffold", () => {
     <asset:Audio id="generated-speech" src="../assets/generated-speech.wav"/>
     <text:Render id="segment-1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}/>
     <h3:ReferenceVideo id="segment-1-take" prompt={segment-1-prompt} duration="8" resolution="768P" aspect-ratio="9:16">
-      <h3:Reference image={product-reference.image}/>
+      <h3:Reference image={product-reference}/>
       <h3:Reference audio={voice-reference}/>
     </h3:ReferenceVideo>
     <gpt:Image id="scene-2" prompt={scene-2-prompt} aspect-ratio="9:16" resolution="1K">
-      <gpt:Reference image={product-reference.image}/>
+      <gpt:Reference image={product-reference}/>
+    </gpt:Image>
+  `;
+  const report = validateOfficialSvml(svml, { videoAroll: true, requireProductReference: true });
+  assert.equal(report.ok, true);
+});
+
+test("validateOfficialSvml accepts presenter-voice without generated-speech asset id", () => {
+  const svml = `
+    <asset:Image id="product-reference" src="../assets/product-reference.jpg"/>
+    <asset:Audio id="presenter-voice" src="../assets/voice-reference.wav"/>
+    <text:Render id="segment-1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}/>
+    <h3:ReferenceVideo id="segment-1-take" prompt={segment-1-prompt} duration="8" resolution="768P" aspect-ratio="9:16">
+      <h3:Reference image={product-reference}/>
+      <h3:Reference audio={presenter-voice}/>
+    </h3:ReferenceVideo>
+    <gpt:Image id="scene-2" prompt={scene-2-prompt} aspect-ratio="9:16" resolution="1K">
+      <gpt:Reference image={product-reference}/>
     </gpt:Image>
   `;
   const report = validateOfficialSvml(svml, { videoAroll: true, requireProductReference: true });

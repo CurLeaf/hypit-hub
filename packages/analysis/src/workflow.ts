@@ -26,7 +26,7 @@ const WORKFLOW_STATE = ".hypit/analysis/workflow.json";
 
 export type WorkflowState = Pick<AnalysisSessionView,
   "insight" | "brief" | "treatment" | "scaffold" | "build" | "adaptation" | "adaptationGoal"
-  | "productReferencePath" | "productReferenceName" | "videoAroll"> & {
+  | "productReferencePath" | "productReferenceName" | "videoAroll" | "directorReview"> & {
   readonly videoPath?: string;
 };
 
@@ -43,6 +43,39 @@ export async function saveWorkflowState(workspaceRoot: string, state: WorkflowSt
   const path = join(workspaceRoot, WORKFLOW_STATE);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+export function workflowStateFromSession(session: AnalysisSessionView): WorkflowState {
+  return {
+    videoPath: session.videoPath,
+    productReferencePath: session.productReferencePath,
+    productReferenceName: session.productReferenceName,
+    videoAroll: session.videoAroll,
+    insight: session.insight,
+    brief: session.brief,
+    treatment: session.treatment,
+    scaffold: session.scaffold,
+    build: session.build,
+    adaptation: session.adaptation,
+    adaptationGoal: session.adaptationGoal,
+    directorReview: session.directorReview,
+  };
+}
+
+export async function refreshScaffoldCheck(
+  workspaceRoot: string,
+  scaffold: ScaffoldView,
+): Promise<ScaffoldView> {
+  try {
+    const check = await runCheck(workspaceRoot, scaffold.runPath);
+    return { ...scaffold, checkOk: check.ok, checkSummary: check.summary };
+  } catch (error) {
+    return {
+      ...scaffold,
+      checkOk: false,
+      checkSummary: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export async function clearWorkflowState(workspaceRoot: string): Promise<void> {
@@ -479,7 +512,7 @@ export async function scaffoldProject(input: {
   let checkOk = true;
   let checkSummary: string | undefined;
   try {
-    const check = await runCheck(input.session.workspaceRoot, runPath, input.runtimePath);
+    const check = await runCheck(input.session.workspaceRoot, runPath);
     checkOk = check.ok;
     checkSummary = check.summary;
   } catch (error) {

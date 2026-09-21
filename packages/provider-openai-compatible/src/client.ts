@@ -1,9 +1,12 @@
 import type { CredentialRef } from "@hypit/endpoint-kit";
 
+export type OpenAiCompatibleUploadMode = "openai-json" | "minimax-multipart";
+
 export type OpenAiCompatibleRoutes = {
   readonly image: string;
   readonly imageEdits: string;
   readonly speech: string;
+  readonly fileUpload: string;
   readonly videoSubmit: string;
   readonly videoStatus: string;
 };
@@ -12,6 +15,7 @@ export const defaultOpenAiCompatibleRoutes: OpenAiCompatibleRoutes = {
   image: "/images/generations",
   imageEdits: "/images/edits",
   speech: "/audio/speech",
+  fileUpload: "/files",
   videoSubmit: "/videos",
   videoStatus: "/videos/{id}",
 };
@@ -36,17 +40,20 @@ export function routePath(template: string, values: Readonly<Record<string, stri
 export class OpenAiCompatibleClient {
   readonly baseUrl: string;
   readonly routes: OpenAiCompatibleRoutes;
+  readonly uploadMode: OpenAiCompatibleUploadMode;
   readonly requestTimeoutMs: number;
   readonly fetcher: typeof globalThis.fetch;
 
   constructor(options: {
     readonly baseUrl: string;
     readonly routes?: Partial<OpenAiCompatibleRoutes>;
+    readonly uploadMode?: OpenAiCompatibleUploadMode;
     readonly requestTimeoutMs?: number;
     readonly fetch?: typeof globalThis.fetch;
   }) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.routes = { ...defaultOpenAiCompatibleRoutes, ...options.routes };
+    this.uploadMode = options.uploadMode ?? "openai-json";
     this.requestTimeoutMs = options.requestTimeoutMs ?? 120_000;
     this.fetcher = options.fetch ?? globalThis.fetch;
   }
@@ -97,7 +104,8 @@ export type OpenAiCompatibleProviderOptions = {
   readonly apiKey: CredentialRef;
   readonly models: Readonly<Record<string, string>>;
   readonly routes?: Partial<OpenAiCompatibleRoutes>;
-  readonly videoAdapter?: "openai-videos" | "async-tasks";
+  readonly uploadMode?: OpenAiCompatibleUploadMode;
+  readonly videoAdapter?: "openai-videos" | "async-tasks" | "minimax-v2";
   readonly defaultConcurrency?: number;
   readonly pollIntervalMs?: number;
   readonly operationTimeoutMs?: number;

@@ -243,7 +243,7 @@ export async function generateUgcReplicaProject(input: {
     return `
   <text:Value id="${scene.id}-prompt">${prompt}</text:Value>
   <gpt:Image id="${scene.id}" prompt={${scene.id}-prompt} aspect-ratio="9:16" resolution="1K">
-    <gpt:Reference image={product-reference.image}/>
+    <gpt:Reference image={product-reference}/>
   </gpt:Image>`;
   }).join("\n");
 
@@ -288,6 +288,9 @@ export async function generateUgcReplicaProject(input: {
       await extractVoiceReferenceSample(speechSource, voiceSamplePath);
     }
     const voiceRel = relativeAssetPath(layout.authorsDir, voiceSamplePath);
+    if (prepared?.generatedSpeechPath !== undefined) {
+      await copyFile(prepared.generatedSpeechPath, join(assetsDir, "generated-speech.wav"));
+    }
     const speakingScenes = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
     const official = buildOfficialSpeakerSvml({
       scenes,
@@ -297,7 +300,7 @@ export async function generateUgcReplicaProject(input: {
       voiceCastingDirection:
         "A clear, engaging Chinese short-form product presenter voice: bright, confident, conversational, with natural emphasis for social-video promo delivery.",
       voiceAssetRel: capabilities.fishSpeech ? undefined : voiceRel,
-      productImageRef: "product-reference.image",
+      productImageRef: "product-reference",
     });
     officialSpeakerImports = official.imports;
     voiceBlock = official.voiceBlock;
@@ -324,14 +327,13 @@ export async function generateUgcReplicaProject(input: {
   <text:Value id="speaker-prompt">Create a realistic vertical phone-shot talking-head video. The reference image shows the visible speaker and scene. The reference audio supplies voice timbre. Deliver the supplied script with clear lip-sync. Dialogue: ${dialogueForPrompt}. PERFORMANCE: engaged product explainer with natural emphasis matching a short-form social promo.</text:Value>
   <h3:ReferenceVideo id="speaker-take" prompt={speaker-prompt} duration="${videoDuration}"
     resolution="768P" aspect-ratio="9:16">
-    <h3:Reference image={product-reference.image}/>
+    <h3:Reference image={product-reference}/>
     <h3:Reference audio={voice-reference}/>
   </h3:ReferenceVideo>
   <pipeline:Normalize id="speaker-media" source={speaker-take.video}
     video="primary-moving" audio="default" span-authority="video" clock={clock}/>`;
     heroVisualItems = `    <media-track:Item id="hero" media={speaker-media.media}
-      extent={scene-extent} during={story.segment.main}
-      frame={speech-frame} appearance={recipes.media.hero}/>`;
+      during={story.segment.main} frame={speech-frame} appearance={recipes.media.hero}/>`;
     speechNormalizeBlock = `  <pipeline:Normalize id="speech-media" source={speaker-media.media}
     video="none" audio="default" span-authority="audio" clock={clock}/>`;
     speechSemanticBlock = `  <whisperx:SemanticTake id="speech-semantic" narrative={story}

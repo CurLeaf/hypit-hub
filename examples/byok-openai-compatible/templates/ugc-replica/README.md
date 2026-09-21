@@ -5,7 +5,7 @@
 | 官方 UGC playbook（HypiHub / Seedance） | 本 BYOK Analysis 快捷道 |
 |----------------------------------------|-------------------------|
 | 深读 `references/*/ANALYSIS.md` + `TIMELINE.md` | 自动转写 + 深读归档 + UI 解读 |
-| 用户审阅 `BRIEF.md` / `TREATMENT.md` | 上传参考图后自动生成（`.hypit/analysis/adaptation/`） |
+| 用户审阅 `BRIEF.md` / `TREATMENT.md` | Cursor Agent 导演审查（`.hypit/analysis/director/`）后制作配音 |
 | `phone-ugc-v1` 人物图 + `fish:VoiceDesign` | 用户参考图 + OpenAI `tts-1`（BYOK 兜底） |
 | `seedance` + `speaker-v1` 多 Take | `speaker-v1` prompt + 多 Segment `h3:ReferenceVideo` Take |
 | `hypit measure` 估时长 | `@hypit/estimate` 按 Segment 估秒（4–15s） |
@@ -44,7 +44,7 @@
 
 B-roll 分镜仍使用 `gpt:Image` + `<gpt:Reference>`（`OPENAI_API_KEY` / `gateway.default`）。
 
-`voice-reference.wav` 由参考片音频前 6 秒自动截取，作为音色参考。
+`voice-reference.wav` 由 **TTS 合成音频前 6 秒**截取，作为 H3 音色参考（不是参考片原声）。
 
 ## 命令
 

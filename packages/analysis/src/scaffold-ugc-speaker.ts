@@ -95,8 +95,7 @@ export function buildOfficialSpeakerSvml(input: {
     semanticBlocks.push("");
     timelineTakes.push(`    <time:Take source={${segId}-semantic.take}/>`);
     visualItems.push(`    <media-track:Item id="${segId}-hero" media={${segId}-media.media}
-      extent={scene-extent} during={story.segment.${segId}}
-      frame={speech-frame} appearance={recipes.media.hero}/>`);
+      during={story.segment.${segId}} frame={speech-frame} appearance={recipes.media.hero}/>`);
   }
 
   return {

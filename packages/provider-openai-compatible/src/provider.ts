@@ -17,6 +17,7 @@ export function createOpenAiCompatibleProvider(options: OpenAiCompatibleProvider
   const client = new OpenAiCompatibleClient({
     baseUrl: options.baseUrl,
     ...(options.routes === undefined ? {} : { routes: options.routes }),
+    ...(options.uploadMode === undefined ? {} : { uploadMode: options.uploadMode }),
     ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });

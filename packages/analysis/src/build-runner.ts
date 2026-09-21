@@ -28,11 +28,15 @@ function hypitLauncher(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../bin/hypit.mjs");
 }
 
+export function buildHypitInvocationArgs(command: readonly string[], workspaceRoot: string): readonly string[] {
+  return [...command, "--workspace", workspaceRoot, "--json"];
+}
+
 async function runHypit(args: readonly string[], workspaceRoot: string): Promise<string> {
   await loadWorkspaceEnv(workspaceRoot);
   const launcher = hypitLauncher();
   try {
-    const { stdout } = await execFileAsync(process.execPath, [launcher, ...args, "--workspace", workspaceRoot, "--json"], {
+    const { stdout } = await execFileAsync(process.execPath, [launcher, ...buildHypitInvocationArgs(args, workspaceRoot)], {
       cwd: workspaceRoot,
       env: process.env,
       maxBuffer: 64 * 1024 * 1024,
@@ -154,9 +158,8 @@ export async function ensureRuntimeUp(workspaceRoot: string, runtimePath?: strin
 export async function runCheck(
   workspaceRoot: string,
   runPath: string,
-  runtimePath?: string,
 ): Promise<{ readonly ok: boolean; readonly summary: string; readonly raw: unknown }> {
-  const args = ["check", runPath, ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
+  const args = ["check", runPath];
   const raw = parseJsonStdout(await runHypit(args, workspaceRoot)) as {
     ok?: boolean;
     title?: string;
