@@ -50,7 +50,7 @@
       "config": {
         "baseUrl": { "store": "env", "key": "H3_VIDEO_BASE_URL" },
         "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
-        "defaultConcurrency": 2,
+        "defaultConcurrency": 1,
         "videoAdapter": "minimax-v2",
         "referenceUpload": "s3",
         "models": {

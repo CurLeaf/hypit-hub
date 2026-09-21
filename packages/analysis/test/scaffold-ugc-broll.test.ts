@@ -10,12 +10,12 @@ import {
 } from "../src/scaffold-ugc-speaker.js";
 import type { ScenePlan } from "../src/scene-plan.js";
 
-function scene(id: string, text: string): ScenePlan {
+function scene(id: string, text: string, start = 0, end = 1): ScenePlan {
   return {
     id,
     momentId: id,
-    start: 0,
-    end: 1,
+    start,
+    end,
     text,
     prompt: "prompt",
   };
@@ -56,10 +56,11 @@ test("packScenesForH3 splits over-long copy into sequential H3 takes", () => {
   assert.equal(packed[1]?.id, "segment-1-t2");
 });
 
-test("buildOfficialSpeakerSvml emits one H3 take per packed scene and fuses them on the timeline", () => {
+test("buildOfficialSpeakerSvml splits long references into 15s timeline shots with last-frame chain", () => {
   const text = "用了一个月才敢分享的高速吹风机中空涵道强劲风力不伤发丝低噪护发冷热循环恒温".repeat(4);
   const official = buildOfficialSpeakerSvml({
-    scenes: [scene("segment-1", text)],
+    scenes: [scene("segment-1", text, 0, 32)],
+    referenceDuration: 32,
     language: "zh",
     capabilities: { fishSpeech: false, h3Video: true },
     voiceSampleText: "用了一个月才敢分享",
@@ -71,9 +72,9 @@ test("buildOfficialSpeakerSvml emits one H3 take per packed scene and fuses them
   const takes = official.timelineTakes.match(/<time:Take /gu) ?? [];
   assert.ok(videos.length >= 2);
   assert.equal(takes.length, videos.length);
-  assert.match(official.generationBlock, /id="shot_1_t1-take"/u);
-  assert.match(official.timelineTakes, /source=\{shot_1_t1-semantic\.take\}/u);
-  assert.match(official.timelineTakes, /source=\{shot_1_t2-semantic\.take\}/u);
+  assert.match(official.generationBlock, /duration="15"/u);
+  assert.match(official.generationBlock, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
+  assert.match(official.generationBlock, /ExtractFrame id="shot_1-last"/u);
   assert.equal(official.scriptBody.includes("</HOST>"), false);
   for (const match of official.generationBlock.matchAll(/duration="(\d+)"/gu)) {
     const duration = Number(match[1]);

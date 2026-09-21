@@ -4,15 +4,16 @@ import { sanitizeH3ShotAction } from "./h3-shot-prompt.js";
 import type { ScenePlan } from "./scene-plan.js";
 import {
   fitsH3Duration,
-  measureSegmentSeconds,
+  H3_MAX_DURATION_SEC,
+  H3_MIN_DURATION_SEC,
   resolveMeasureLanguage,
 } from "./measure-segments.js";
 import { buildOfficialScript, sanitizeScriptId } from "./script-format.js";
 import type { RuntimeCapabilities } from "./runtime-capabilities.js";
 import { groupScenesIntoShots, type ShotPlan } from "./shot-plan.js";
 
-/** Soft cap to avoid runaway cost; long scripts still get every segment up to this limit. */
-const MAX_TAKES = 12;
+/** Soft cap to avoid runaway cost; long references are truncated to this many H3 shots. */
+export const MAX_H3_TAKES = 12;
 
 const PHRASE_DELIMITER = /([。！？!?；;，,、])/u;
 
@@ -136,17 +137,31 @@ export function packScenesForH3(
 
 export function selectSpeakingScenes(scenes: readonly ScenePlan[]): readonly ScenePlan[] {
   const spoken = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
-  if (spoken.length <= MAX_TAKES) return spoken;
-  return spoken.slice(0, MAX_TAKES);
+  if (spoken.length <= MAX_H3_TAKES) return spoken;
+  return spoken.slice(0, MAX_H3_TAKES);
 }
 
-export function measureH3ShotDuration(
-  shot: { readonly text: string; readonly durationSeconds?: number },
-  language: SpeechEstimateLanguage | string = "zh",
-): number {
-  const speechSeconds = measureSegmentSeconds(shot.text, language);
-  if (shot.durationSeconds === undefined) return speechSeconds;
-  return Math.min(shot.durationSeconds, speechSeconds);
+export function selectH3Shots(
+  scenes: readonly ScenePlan[],
+  referenceDuration: number,
+): {
+  readonly shots: readonly ShotPlan[];
+  readonly plannedTakeCount: number;
+  readonly truncated: boolean;
+} {
+  const all = groupScenesIntoShots(scenes, referenceDuration);
+  const truncated = all.length > MAX_H3_TAKES;
+  return {
+    shots: truncated ? all.slice(0, MAX_H3_TAKES) : all,
+    plannedTakeCount: all.length,
+    truncated,
+  };
+}
+
+/** Timeline slot for one H3 request (4–15s); last shot keeps the remainder from the reference. */
+export function measureH3ShotDuration(shot: { readonly durationSeconds: number }): number {
+  const seconds = Math.ceil(shot.durationSeconds);
+  return Math.min(H3_MAX_DURATION_SEC, Math.max(H3_MIN_DURATION_SEC, seconds));
 }
 
 export function buildH3ShotActionFallback(shot: {
@@ -191,29 +206,8 @@ function resolveReferenceDuration(
   return Math.max(4, Math.ceil(sceneEnd));
 }
 
-function selectShots(scenes: readonly ScenePlan[], referenceDuration: number): readonly ShotPlan[] {
-  const shots = groupScenesIntoShots(scenes, referenceDuration);
-  if (shots.length <= MAX_TAKES) return shots;
-  return shots.slice(0, MAX_TAKES);
-}
-
-function expandShotsForH3(shots: readonly ShotPlan[], language: string): readonly H3Take[] {
-  const takes: H3Take[] = [];
-  for (const shot of shots) {
-    const parts = splitSpokenTextForH3(shot.text, language);
-    if (parts.length <= 1) {
-      takes.push({ id: shot.id, text: parts[0] ?? shot.text, shot });
-      continue;
-    }
-    parts.forEach((text, index) => {
-      takes.push({
-        id: `${shot.id}-t${index + 1}`,
-        text,
-        shot,
-      });
-    });
-  }
-  return takes;
+function expandShotsForH3(shots: readonly ShotPlan[]): readonly H3Take[] {
+  return shots.map((shot) => ({ id: shot.id, text: shot.text, shot }));
 }
 
 export function buildOfficialSpeakerSvml(input: {
@@ -235,10 +229,15 @@ export function buildOfficialSpeakerSvml(input: {
   readonly timelineTakes: string;
   readonly visualItems: string;
   readonly voiceAudioRef: string;
+  readonly h3ShotPlan: {
+    readonly takeCount: number;
+    readonly plannedTakeCount: number;
+    readonly truncated: boolean;
+  };
 } {
   const referenceDuration = resolveReferenceDuration(input.scenes, input.referenceDuration);
-  const shots = selectShots(input.scenes, referenceDuration);
-  const takes = expandShotsForH3(shots, input.language);
+  const { shots, plannedTakeCount, truncated } = selectH3Shots(input.scenes, referenceDuration);
+  const takes = expandShotsForH3(shots);
   const scriptBody = buildOfficialScript(takes.map((take) => ({
     id: sanitizeScriptId(take.id),
     text: take.text,
@@ -275,10 +274,7 @@ export function buildOfficialSpeakerSvml(input: {
 
   for (const [index, take] of takes.entries()) {
     const takeId = sanitizeScriptId(take.id);
-    const duration = measureH3ShotDuration({
-      text: take.text,
-      durationSeconds: take.shot.durationSeconds,
-    }, input.language);
+    const duration = measureH3ShotDuration({ durationSeconds: take.shot.durationSeconds });
     const action = xmlEscape(resolveH3ShotAction(take.shot, input.shotActions));
     const imageRef = index === 0
       ? input.productImageRef
@@ -322,5 +318,10 @@ export function buildOfficialSpeakerSvml(input: {
     timelineTakes: timelineTakes.join("\n"),
     visualItems: visualItems.join("\n"),
     voiceAudioRef,
+    h3ShotPlan: {
+      takeCount: takes.length,
+      plannedTakeCount,
+      truncated,
+    },
   };
 }

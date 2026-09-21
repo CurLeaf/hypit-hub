@@ -13,7 +13,7 @@ import { resolveSpeechAudio, type SpeechMode } from "./speech-synth.js";
 import { buildH3ShotActions } from "./h3-shot-prompt.js";
 import { adaptationMatchesReference } from "./replica-readiness.js";
 import { loadRuntimeCapabilities } from "./runtime-capabilities.js";
-import { buildOfficialSpeakerSvml } from "./scaffold-ugc-speaker.js";
+import { buildOfficialSpeakerSvml, MAX_H3_TAKES, selectH3Shots } from "./scaffold-ugc-speaker.js";
 import { groupScenesIntoShots } from "./shot-plan.js";
 import { sanitizeScriptId } from "./script-format.js";
 import type { AdaptationView, AnalysisSessionView, BriefView, TreatmentView, ViralInsightView } from "./shared.js";
@@ -270,6 +270,7 @@ export async function generateUgcReplicaProject(input: {
   let speechSemanticBlock = "";
   let speechNormalizeBlock = `  <pipeline:Normalize id="speech-media" source={reference-audio}
     video="none" audio="default" span-authority="audio" clock={clock}/>`;
+  let h3ShotTruncationNote = "";
 
   if (useOfficialSpeaker) {
     const voiceSamplePath = join(assetsDir, "voice-reference.wav");
@@ -318,6 +319,9 @@ export async function generateUgcReplicaProject(input: {
     heroVisualItems = official.visualItems;
     speechSemanticBlock = official.semanticBlock;
     speechNormalizeBlock = "";
+    if (official.h3ShotPlan.truncated) {
+      h3ShotTruncationNote = `- ⚠️ 参考片计划 ${official.h3ShotPlan.plannedTakeCount} 镜，已截断为 ${MAX_H3_TAKES} 镜（约 ${MAX_H3_TAKES * 15}s H3 上限）。`;
+    }
   } else {
     heroVisualItems = `    <media-track:Item id="hero" image={${heroId}.image}
       extent={scene-extent} during={story.segment.main}
@@ -414,7 +418,10 @@ ${brollItems}
       "- 口播文案：按爆款结构改写（对话模型），非参考片原文。",
       "- 配音：Fish VoiceDesign（若 Runtime 已绑定）或 TTS 音色样本（BYOK 兜底）。",
       useVideoAroll
-        ? `- A-roll：h3-ugc-replica-v1 + H3 按参考片时间轴每 ≤15s 一镜（共 ${groupScenesIntoShots(scenes, durationSec).length} 镜，尾帧衔接），时间轴与字幕对齐 H3 口型音轨。`
+        ? [
+          `- A-roll：h3-ugc-replica-v1 + H3 按参考片时间轴每 ≤15s 一镜（共 ${selectH3Shots(scenes, durationSec).shots.length} 镜，尾帧衔接），时间轴与字幕对齐 H3 口型音轨。`,
+          ...(h3ShotTruncationNote.length > 0 ? [h3ShotTruncationNote] : []),
+        ].join("\n")
         : "- 画面：`gpt:Image` 的 `<gpt:Reference>` 传入模型。", ""] : []),
     ...(!hasProductReference ? ["", "## 人物画面", "- 无参考图时使用官方 `phone-ugc-v1` 模板生成竖屏口播人物图。", ""] : []),
     "## 命令",

@@ -22,7 +22,7 @@ function scene(start: number, end: number, text: string, prompt = "Vertical prod
   };
 }
 
-test("buildOfficialSpeakerSvml uses speech-based H3 duration for lip-sync", () => {
+test("buildOfficialSpeakerSvml uses timeline-based 15s H3 duration per shot", () => {
   const scenes = [
     scene(0, 10, "第一段口播内容"),
     scene(10, 20, "第二段口播内容"),
@@ -38,11 +38,17 @@ test("buildOfficialSpeakerSvml uses speech-based H3 duration for lip-sync", () =
     productImageRef: "product-reference",
   });
 
-  const expectedDuration = String(measureH3ShotDuration({ text: "第一段口播内容第二段口播内容" }, "zh"));
-  assert.match(result.generationBlock, new RegExp(`duration="${expectedDuration}"`, "u"));
+  assert.match(result.generationBlock, /duration="15"/u);
+  assert.match(result.generationBlock, /duration="5"/u);
   assert.doesNotMatch(result.generationBlock, /tts-master/u);
   assert.doesNotMatch(result.generationBlock, /-tts\.media/u);
   assert.match(result.semanticBlock, /media=\{shot_1-media\.media\}/u);
+});
+
+test("measureH3ShotDuration follows reference timeline slots", () => {
+  assert.equal(measureH3ShotDuration({ durationSeconds: 15 }), 15);
+  assert.equal(measureH3ShotDuration({ durationSeconds: 5 }), 5);
+  assert.equal(measureH3ShotDuration({ durationSeconds: 3.2 }), 4);
 });
 
 test("buildOfficialSpeakerSvml wires reference image and audio for each H3 take", () => {
