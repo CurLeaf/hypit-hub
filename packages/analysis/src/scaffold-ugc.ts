@@ -316,7 +316,7 @@ export async function generateUgcReplicaProject(input: {
     scriptBody = official.scriptBody;
     timelineTakes = official.timelineTakes;
     heroVisualItems = official.visualItems;
-    speechSemanticBlock = "";
+    speechSemanticBlock = official.semanticBlock;
     speechNormalizeBlock = "";
   } else {
     heroVisualItems = `    <media-track:Item id="hero" image={${heroId}.image}

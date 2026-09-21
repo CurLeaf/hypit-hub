@@ -82,6 +82,10 @@ test("buildOfficialSpeakerSvml chains last-frame reference for follow-up shots",
 
   assert.match(result.generationBlock, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
   assert.equal((result.generationBlock.match(/<h3:ReferenceVideo/gu) ?? []).length, 2);
+  assert.match(result.semanticBlock, /whisperx:SemanticTake id="shot_1-semantic"/u);
+  assert.match(result.semanticBlock, /whisperx:SemanticTake id="shot_2-semantic"/u);
+  assert.match(result.timelineTakes, /source=\{shot_1-semantic\.take\}/u);
+  assert.match(result.timelineTakes, /source=\{shot_2-semantic\.take\}/u);
 });
 
 test("resolveH3ShotAction falls back when action map contains Chinese", () => {
