@@ -7,7 +7,7 @@ test("validateOfficialSvml accepts official ugc speaker scaffold", () => {
   const svml = `
     <asset:Image id="product-reference" src="../assets/product-reference.jpg"/>
     <asset:Audio id="presenter-voice" src="../assets/voice-reference.wav"/>
-    <text:Render id="segment_1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}/>
+    <text:Render id="shot_1-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}/>
     <h3:ReferenceVideo id="segment_1-take" prompt={segment_1-prompt} duration="8" resolution="768P" aspect-ratio="9:16">
       <h3:Reference image={product-reference.image}/>
       <h3:Reference audio={presenter-voice}/>
@@ -24,7 +24,7 @@ test("validateOfficialSvml accepts presenter-voice without generated-speech asse
   const svml = `
     <asset:Image id="product-reference" src="../assets/product-reference.jpg"/>
     <asset:Audio id="presenter-voice" src="../assets/voice-reference.wav"/>
-    <text:Render id="segment-1-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}/>
+    <text:Render id="shot_1-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}/>
     <h3:ReferenceVideo id="segment-1-take" prompt={segment-1-prompt} duration="8" resolution="768P" aspect-ratio="9:16">
       <h3:Reference image={product-reference}/>
       <h3:Reference audio={presenter-voice}/>

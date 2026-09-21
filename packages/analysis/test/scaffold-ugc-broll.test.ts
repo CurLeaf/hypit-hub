@@ -71,9 +71,9 @@ test("buildOfficialSpeakerSvml emits one H3 take per packed scene and fuses them
   const takes = official.timelineTakes.match(/<time:Take /gu) ?? [];
   assert.ok(videos.length >= 2);
   assert.equal(takes.length, videos.length);
-  assert.match(official.generationBlock, /id="segment_1_t1-take"/u);
-  assert.match(official.timelineTakes, /source=\{segment_1_t1-semantic\.take\}/u);
-  assert.match(official.timelineTakes, /source=\{segment_1_t2-semantic\.take\}/u);
+  assert.match(official.generationBlock, /id="shot_1_t1-take"/u);
+  assert.match(official.timelineTakes, /source=\{shot_1_t1-semantic\.take\}/u);
+  assert.match(official.timelineTakes, /source=\{shot_1_t2-semantic\.take\}/u);
   assert.equal(official.scriptBody.includes("</HOST>"), false);
   for (const match of official.generationBlock.matchAll(/duration="(\d+)"/gu)) {
     const duration = Number(match[1]);

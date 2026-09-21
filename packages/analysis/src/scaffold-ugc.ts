@@ -10,9 +10,11 @@ import { buildAdaptationScenes } from "./scenes-from-structure.js";
 import { adaptScenesForProduct } from "./script-adapt.js";
 import { resolveSpeechAudio, type SpeechMode } from "./speech-synth.js";
 
+import { buildH3ShotActions } from "./h3-shot-prompt.js";
 import { adaptationMatchesReference } from "./replica-readiness.js";
 import { loadRuntimeCapabilities } from "./runtime-capabilities.js";
 import { buildOfficialSpeakerSvml } from "./scaffold-ugc-speaker.js";
+import { groupScenesIntoShots } from "./shot-plan.js";
 import { sanitizeScriptId } from "./script-format.js";
 import type { AdaptationView, AnalysisSessionView, BriefView, TreatmentView, ViralInsightView } from "./shared.js";
 
@@ -289,8 +291,16 @@ export async function generateUgcReplicaProject(input: {
     }
     const voiceRel = relativeAssetPath(layout.authorsDir, voiceSamplePath);
     const speakingScenes = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
+    const shotActions = await buildH3ShotActions({
+      shots: groupScenesIntoShots(scenes, durationSec),
+      insight,
+      ...(treatment === undefined ? {} : { treatment }),
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
+      workspaceRoot: session.workspaceRoot,
+    });
     const official = buildOfficialSpeakerSvml({
       scenes,
+      referenceDuration: durationSec,
       language,
       capabilities,
       voiceSampleText: speakingScenes[0]?.text ?? spokenText.slice(0, 120),
@@ -298,6 +308,7 @@ export async function generateUgcReplicaProject(input: {
         "A clear, engaging Chinese short-form product presenter voice: bright, confident, conversational, with natural emphasis for social-video promo delivery.",
       ...(capabilities.fishSpeech ? {} : { voiceAssetRel: voiceRel }),
       productImageRef: "product-reference",
+      ...(shotActions.size > 0 ? { shotActions } : {}),
     });
     officialSpeakerImports = official.imports;
     voiceBlock = official.voiceBlock;
@@ -403,7 +414,7 @@ ${brollItems}
       "- 口播文案：按爆款结构改写（对话模型），非参考片原文。",
       "- 配音：Fish VoiceDesign（若 Runtime 已绑定）或 TTS 音色样本（BYOK 兜底）。",
       useVideoAroll
-        ? `- A-roll：官方 speaker-v1 + 多 Segment h3:ReferenceVideo Take（共 ${scenes.filter((scene) => sceneHasSpeech(scene)).length} 段）。`
+        ? `- A-roll：h3-ugc-replica-v1 + H3 按参考片时间轴每 ≤15s 一镜（共 ${groupScenesIntoShots(scenes, durationSec).length} 镜，尾帧衔接），时间轴与字幕对齐 H3 口型音轨。`
         : "- 画面：`gpt:Image` 的 `<gpt:Reference>` 传入模型。", ""] : []),
     ...(!hasProductReference ? ["", "## 人物画面", "- 无参考图时使用官方 `phone-ugc-v1` 模板生成竖屏口播人物图。", ""] : []),
     "## 命令",
