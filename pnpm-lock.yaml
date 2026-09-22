@@ -306,6 +306,9 @@ importers:
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
+      chrome-devtools-mcp:
+        specifier: ^1.9.0
+        version: 1.9.0
       rollup:
         specifier: 4.62.4
         version: 4.62.4
@@ -5432,6 +5435,19 @@ packages:
     resolution: {integrity: sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==}
     engines: {node: '>=18'}
 
+  chrome-devtools-mcp@1.9.0:
+    resolution: {integrity: sha512-RnzXoJiUQ44hpOihWk90uOhLD/CnwDkDy0ldHMZONJ2nYQ+dWN1fq1luHHqyd+7FuYnyIlCY6uTThbN5ut9kSQ==}
+    engines: {node: ^20.19.0 || ^22.12.0 || >=23}
+    hasBin: true
+    peerDependencies:
+      '@blackwell-systems/gcf': ^2.2.2
+      '@toon-format/toon': ^4.1.0
+    peerDependenciesMeta:
+      '@blackwell-systems/gcf':
+        optional: true
+      '@toon-format/toon':
+        optional: true
+
   chromium-bidi@17.0.2:
     resolution: {integrity: sha512-5v9GQFhTktFvotn/OFNJBmKLKRAb6n9r0bVCwf7sHgWc3/JryK0bj1nn93L3pHFrfgcsu6Be6EWsDi+1XHTGDg==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0'}
@@ -8024,6 +8040,8 @@ snapshots:
   character-entities-legacy@3.0.0: {}
 
   chownr@3.0.0: {}
+
+  chrome-devtools-mcp@1.9.0: {}
 
   chromium-bidi@17.0.2(devtools-protocol@0.0.1653615):
     dependencies:

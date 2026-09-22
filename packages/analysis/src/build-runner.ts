@@ -64,31 +64,6 @@ function parseJsonStdout(stdout: string): unknown {
   }
 }
 
-export async function runPricing(workspaceRoot: string, runPath: string, runtimePath?: string): Promise<{ summary: string; raw: unknown }> {
-  const args = ["pricing", runPath, ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
-  const raw = parseJsonStdout(await runHypit(args, workspaceRoot)) as {
-    title?: string;
-    lines?: string[];
-    facts?: [string, string][];
-    estimates?: { readonly label?: string; readonly amount?: string }[];
-  };
-  const facts = (raw.facts ?? []).map(([key, value]) => key + ": " + value).join(" · ");
-  const estimates = (raw.estimates ?? []).map((row) => (row.label ?? "") + " " + (row.amount ?? "")).join("\n");
-  const lines = (raw.lines ?? []).slice(0, 6).join("\n");
-  const summary = [raw.title, facts, estimates, lines].filter((part) => part !== undefined && part.length > 0).join("\n");
-  return { summary, raw };
-}
-
-export async function runPlan(workspaceRoot: string, runPath: string, runtimePath?: string): Promise<{ summary: string; raw: unknown }> {
-  const args = ["plan", runPath, ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
-  const raw = parseJsonStdout(await runHypit(args, workspaceRoot));
-  const machine = raw as { title?: string; lines?: string[]; facts?: [string, string][] };
-  const facts = (machine.facts ?? []).map(([key, value]) => `${key}: ${value}`).join(" · ");
-  const lines = (machine.lines ?? []).slice(0, 8).join("\n");
-  const summary = [machine.title, facts, lines].filter((part) => part !== undefined && part.length > 0).join("\n");
-  return { summary, raw };
-}
-
 export async function submitBuild(workspaceRoot: string, runPath: string, runtimePath?: string): Promise<string> {
   const args = ["build", runPath, ...(runtimePath === undefined ? [] : ["--runtime", runtimePath])];
   const raw = parseJsonStdout(await runHypit(args, workspaceRoot)) as {

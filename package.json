@@ -239,9 +239,9 @@
     "@hypit/protocol": "workspace:*",
     "@hypit/provider-hyperframes-local": "workspace:*",
     "@hypit/provider-hypihub": "workspace:*",
-    "@hypit/provider-openai-compatible": "workspace:*",
     "@hypit/provider-image-opencv-local": "workspace:*",
     "@hypit/provider-media-local": "workspace:*",
+    "@hypit/provider-openai-compatible": "workspace:*",
     "@hypit/provider-whisperx-local": "workspace:*",
     "@hypit/ranking": "workspace:*",
     "@hypit/ranking-studio": "workspace:*",
@@ -280,19 +280,20 @@
     "@hypit/volcengine-matting": "workspace:*",
     "@hypit/whisperx": "workspace:*",
     "@types/node": "24.10.1",
+    "chrome-devtools-mcp": "^1.9.0",
     "rollup": "4.62.4",
     "rollup-plugin-dts": "6.2.3",
     "vitepress": "^1.6.4"
   },
   "dependencies": {
     "@puppeteer/browsers": "3.2.2",
+    "cjs-module-lexer": "2.2.1",
+    "cmu-pronouncing-dictionary": "3.0.0",
     "koffi": "3.2.1",
     "puppeteer-core": "25.10.0",
     "sharp": "0.35.4",
-    "cmu-pronouncing-dictionary": "3.0.0",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "vite": "8.2.2",
-    "cjs-module-lexer": "2.2.1"
+    "vite": "8.2.2"
   }
 }

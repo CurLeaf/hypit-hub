@@ -271,7 +271,6 @@ ${tierItems}
     "",
     ...items.map((item) => "- " + item.tier.toUpperCase() + " · " + item.text.slice(0, 40)),
     "",
-    "hypit plan runs/final.svrun",
     "hypit build runs/final.svrun --follow",
   ].join("\n"), "utf8");
 

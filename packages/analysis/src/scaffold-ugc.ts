@@ -407,8 +407,6 @@ ${brollItems}
         : "- 画面：`gpt:Image` 的 `<gpt:Reference>` 传入模型。", ""] : []),
     ...(!hasProductReference ? ["", "## 人物画面", "- 无参考图时使用官方 `phone-ugc-v1` 模板生成竖屏口播人物图。", ""] : []),
     "## 命令",
-    "hypit plan runs/final.svrun",
-    "hypit pricing runs/final.svrun",
     "hypit build runs/final.svrun --follow",
     "hypit studio --run runs/final.svrun",
   ].join("\n"), "utf8");

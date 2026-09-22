@@ -12,8 +12,6 @@ import {
   ensureRuntimeUp,
   exportBuildVideo,
   pollBuildStatus,
-  runPlan,
-  runPricing,
   submitBuild,
 } from "./build-runner.js";
 import {
@@ -473,26 +471,14 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                   if (runPath === undefined) throw new Error("工程脚手架失败");
                   session = {
                     ...session,
-                    workflowJob: { id: workflowId, status: "running", phase: "查看执行计划…" },
-                    build: { status: "planning", phase: "plan…" },
-                  };
-                  const plan = await runPlan(options.workspaceRoot, runPath, runtimePath);
-                  session = {
-                    ...session,
-                    build: { status: "planning", phase: "估算费用…", planSummary: plan.summary },
-                    workflowJob: { id: workflowId, status: "running", phase: "估算费用…" },
-                  };
-                  const pricing = await runPricing(options.workspaceRoot, runPath, runtimePath);
-                  session = {
-                    ...session,
-                    build: { status: "building", phase: "提交 Build…", planSummary: plan.summary, pricingSummary: pricing.summary },
-                    workflowJob: { id: workflowId, status: "running", phase: "提交 Build…" },
+                    workflowJob: { id: workflowId, status: "running", phase: "提交生成…" },
+                    build: { status: "building", phase: "提交生成…" },
                   };
                   const buildId = await submitBuild(options.workspaceRoot, runPath, runtimePath);
                   const outputPath = resolve(workflow.scaffold!.productionDir, "output", "final.mp4");
                   session = {
                     ...session,
-                    build: { id: buildId, status: "building", phase: "生成中…", planSummary: plan.summary },
+                    build: { id: buildId, status: "building", phase: "生成中…" },
                     workflowJob: { id: workflowId, status: "running", phase: "生成视频中…" },
                   };
                   await persistWorkflow();
@@ -608,13 +594,11 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             void (async () => {
               try {
                 await ensureRuntimeUp(options.workspaceRoot, runtimePath);
-                const plan = await runPlan(options.workspaceRoot, session.scaffold!.runPath, runtimePath);
-                const pricing = await runPricing(options.workspaceRoot, session.scaffold!.runPath, runtimePath);
                 const buildId = await submitBuild(options.workspaceRoot, session.scaffold!.runPath, runtimePath);
                 const outputPath = resolve(session.scaffold!.productionDir, "output", "final.mp4");
                 session = {
                   ...session,
-                  build: { id: buildId, status: "building", phase: "生成中…", planSummary: plan.summary, pricingSummary: pricing.summary },
+                  build: { id: buildId, status: "building", phase: "生成中…" },
                   workflowJob: { id: `build-${Date.now()}`, status: "running", phase: "生成视频中…" },
                 };
                 await persistWorkflow();
