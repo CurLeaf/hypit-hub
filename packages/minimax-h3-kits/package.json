@@ -1,0 +1,19 @@
+{
+  "name": "@hypit/minimax-h3-kits",
+  "version": "0.0.0-dev",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ugc-replica": "./kits/h3-ugc-replica-v1.svs",
+    "./speaker": "./kits/h3-speaker-v1.svs"
+  },
+  "files": [
+    "kits",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@hypit/svs": "workspace:*",
+    "@hypit/text": "workspace:*"
+  }
+}

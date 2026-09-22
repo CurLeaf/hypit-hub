@@ -88,6 +88,35 @@ export type ScaffoldView = {
   readonly checkSummary?: string;
 };
 
+export type DirectorReviewStatus = "pending" | "approved";
+
+export type DirectorAgentStatus = "idle" | "running" | "complete" | "error";
+
+export type DirectorAgentView = {
+  readonly provider: "cursor";
+  readonly status: DirectorAgentStatus;
+  readonly phase?: string;
+  readonly error?: string;
+  readonly runId?: string;
+  readonly agentId?: string;
+  readonly finishedAt?: number;
+};
+
+export type DirectorReviewView = {
+  readonly status: DirectorReviewStatus;
+  readonly phase?: string;
+  readonly dir: string;
+  readonly requestPath: string;
+  readonly briefPath: string;
+  readonly treatmentPath: string;
+  readonly scenesPath: string;
+  readonly checklistPath: string;
+  readonly approvedAt?: number;
+  /** 审查通过时绑定的改编说明，用于判断 goal 变更是否需要失效配音产物 */
+  readonly adaptationGoal?: string;
+  readonly agent?: DirectorAgentView;
+};
+
 export type AdaptationView = {
   readonly status: "idle" | "running" | "complete" | "error";
   readonly phase?: string;
@@ -153,6 +182,7 @@ export type AnalysisSessionView = {
   readonly build?: BuildJobView;
   readonly adaptation?: AdaptationView;
   readonly adaptationGoal?: string;
+  readonly directorReview?: DirectorReviewView;
 };
 
 export type OfficialPathCheckView = {
@@ -167,6 +197,14 @@ export type OfficialPathReportView = {
   readonly checks: readonly OfficialPathCheckView[];
 };
 
+export type DirectorAgentConfigView = {
+  readonly provider: "cursor" | "manual";
+  readonly auto: boolean;
+  readonly available: boolean;
+  readonly model: string;
+  readonly missing?: string;
+};
+
 export type AnalysisConfigView = {
   readonly workspaceRoot: string;
   readonly runtimeProfile?: string;
@@ -178,6 +216,7 @@ export type AnalysisConfigView = {
   readonly hasH3ApiKey?: boolean;
   readonly defaultVideoUrl?: string;
   readonly defaultVideoName?: string;
+  readonly directorAgent?: DirectorAgentConfigView;
 };
 
 export function formatTime(seconds: number): string {

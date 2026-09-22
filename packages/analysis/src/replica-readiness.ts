@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type { AdaptationView, AnalysisSessionView, OfficialPathReportView } from "./shared.js";
 import { adaptationDir } from "./prepare-adaptation.js";
+import { refreshScaffoldCheck } from "./workflow.js";
 import {
   assertOfficialH3Credential,
   assertOfficialLlmGateway,
@@ -74,7 +75,10 @@ export async function checkReplicationReadiness(
   const issues = report.checks.filter((check) => !check.ok).map((check) => `${check.label}：${check.detail}`);
 
   if (options?.forBuild === true && session.scaffold !== undefined) {
-    const assetsDir = join(session.scaffold.productionDir, "assets");
+    const scaffold = session.scaffold.checkOk === false
+      ? await refreshScaffoldCheck(session.workspaceRoot, session.scaffold)
+      : session.scaffold;
+    const assetsDir = join(scaffold.productionDir, "assets");
     const useVideoAroll = session.videoAroll ?? true;
     const capabilities = await loadRuntimeCapabilities(runtimePath);
     const hasGeneratedSpeech = await fileExists(join(assetsDir, "generated-speech.wav"));
@@ -90,8 +94,8 @@ export async function checkReplicationReadiness(
     if (productAssets.length === 0) {
       issues.push("工程内缺少参考图素材 product-reference.*，请重新点击「一键复刻」");
     }
-    if (shouldBlockBuildOnScaffoldCheck(session.scaffold.checkOk, session.scaffold.checkSummary)) {
-      issues.push(`工程校验未通过：${session.scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
+    if (shouldBlockBuildOnScaffoldCheck(scaffold.checkOk, scaffold.checkSummary)) {
+      issues.push(`工程校验未通过：${scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
     }
   }
 

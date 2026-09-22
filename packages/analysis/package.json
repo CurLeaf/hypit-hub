@@ -7,7 +7,9 @@
     "./start": "./start.ts"
   },
   "dependencies": {
+    "@cursor/sdk": "^0.1.0",
     "@hypit/cli": "workspace:*",
+    "@hypit/credential-store-env": "workspace:*",
     "@hypit/driver-node": "workspace:*",
     "@hypit/estimate": "workspace:*",
     "@hypit/project-context-node": "workspace:*",

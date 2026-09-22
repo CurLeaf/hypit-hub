@@ -19,10 +19,38 @@ export type OfficialPathReport = {
 
 const DEFAULT_SCENE_PROMPT_MARK = "Chinese product promo scene";
 
-function hasAdaptedVoice(svml: string): boolean {
+function hasOfficialTtsVoice(svml: string): boolean {
   return svml.includes("generated-speech")
+    || svml.includes('id="voice-reference"')
     || svml.includes('id="presenter-voice"')
-    || svml.includes('id="voice-reference"');
+    || svml.includes("fish:VoiceDesign");
+}
+
+export function hasOfficialH3PromptTemplate(svml: string): boolean {
+  return svml.includes("h3-kit.h3-ugc-replica-v1");
+}
+
+function countH3ReferenceVideos(svml: string): number {
+  return (svml.match(/<h3:ReferenceVideo/gu) ?? []).length;
+}
+
+function usesLegacyPerSceneH3(svml: string): boolean {
+  return /id="scene_\d+-take"/u.test(svml)
+    || /id="segment[_-]\d+-take"/u.test(svml)
+    || svml.includes("speaker-kit.speaker-v1");
+}
+
+function usesTimelineH3Takes(svml: string): boolean {
+  const ids = [...svml.matchAll(/<h3:ReferenceVideo id="([^"]+)"/gu)].map((match) => match[1]);
+  if (ids.length === 0) return false;
+  return ids.every((id) => /^shot_\d+-take$/u.test(id));
+}
+
+function hasH3LastFrameChain(svml: string): boolean {
+  const takeCount = countH3ReferenceVideos(svml);
+  if (takeCount <= 1) return true;
+  return /<pipeline:ExtractFrame[^>]+at="last"/u.test(svml)
+    && /<h3:Reference image=\{shot_\d+-last\.image\}\/>/u.test(svml);
 }
 
 export function isDefaultScenePrompt(prompt: string): boolean {
@@ -71,28 +99,40 @@ export function validateOfficialSvml(
     {
       id: "product-reference",
       label: "参考图写入工程",
-      ok: svml.includes('id="product-reference"') || svml.includes("product-reference.image"),
+      ok: svml.includes('id="product-reference"'),
       detail: "应含 assets/product-reference 与 gpt/H3 Reference 绑定",
     },
     {
       id: "tts-audio",
-      label: "TTS 改编配音",
-      ok: hasAdaptedVoice(svml) || !options.requireProductReference,
+      label: "音色样本已写入工程",
+      ok: hasOfficialTtsVoice(svml) || !options.requireProductReference,
       detail: options.videoAroll
-        ? "H3 口播使用 TTS 音色样本（presenter-voice / voice-reference），不以参考片原声做口播轨"
+        ? "H3 口播使用 TTS 音色样本（presenter-voice / voice-reference / fish:VoiceDesign），不以参考片原声做口播轨"
         : "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
     },
     {
       id: "h3-aroll",
       label: "H3 A-roll 口播",
       ok: !options.videoAroll || svml.includes("h3:ReferenceVideo"),
-      detail: "启用 H3 口播时应含 h3:ReferenceVideo + speaker-v1 prompt",
+      detail: "启用 H3 口播时应含 h3:ReferenceVideo + h3-ugc-replica-v1 prompt",
     },
     {
       id: "speaker-template",
-      label: "speaker-v1 模板",
-      ok: !options.videoAroll || svml.includes("speaker-kit.speaker-v1"),
-      detail: "H3 prompt 由官方 speaker-v1 模板渲染",
+      label: "H3 prompt 模板",
+      ok: !options.videoAroll || hasOfficialH3PromptTemplate(svml),
+      detail: "H3 prompt 应使用 h3-kit.h3-ugc-replica-v1（非 speaker-kit）",
+    },
+    {
+      id: "h3-timeline-shots",
+      label: "H3 时间轴分镜",
+      ok: !options.videoAroll || (usesTimelineH3Takes(svml) && !usesLegacyPerSceneH3(svml)),
+      detail: "启用 H3 口播时应为 shot_N-take（≤15s/镜），非 scene_N-take 按切点逐段生成",
+    },
+    {
+      id: "h3-frame-chain",
+      label: "H3 尾帧衔接",
+      ok: !options.videoAroll || hasH3LastFrameChain(svml),
+      detail: "多镜 H3 口播应含 ExtractFrame(at=last) 与 shot_N-last.image 参考衔接",
     },
     {
       id: "gpt-reference",
@@ -137,10 +177,10 @@ export async function buildOfficialPathReport(input: {
   const ttsOk = llmOk;
   checks.push({
     id: "tts",
-    label: "TTS 改编配音",
+    label: "TTS 试听 / 音色样本",
     ok: ttsOk,
     detail: ttsOk
-      ? `将使用 ${gateway!.ttsModel} / ${gateway!.ttsVoice}`
+      ? `改编审查与 H3 音色样本：${gateway!.ttsModel} / ${gateway!.ttsVoice}`
       : "TTS 与对话模型共用 gateway.default 密钥",
   });
 
@@ -173,8 +213,22 @@ export async function buildOfficialPathReport(input: {
       : "请在「生成」页上传产品/人物参考图",
   });
 
+  const review = input.session.directorReview;
+  const reviewOk = !hasReference || review?.status === "approved";
+  checks.push({
+    id: "director-review",
+    label: "导演审查已通过",
+    ok: reviewOk,
+    detail: review?.status === "approved"
+      ? "Agent 已审 BRIEF / Treatment / 口播"
+      : hasReference
+        ? "请先在 Cursor 编辑 .hypit/analysis/director/ 并点击「导演审查通过」"
+        : "上传参考图后启用",
+  });
+
   const adapt = input.session.adaptation;
   const adaptOk = hasReference
+    && reviewOk
     && adapt?.status === "complete"
     && adapt.generatedSpeechPath !== undefined
     && adapt.productReferenceSource === input.session.productReferencePath;
@@ -187,8 +241,10 @@ export async function buildOfficialPathReport(input: {
       : adapt?.status === "error"
         ? (adapt.error ?? "制作失败")
         : adaptOk
-          ? "TTS 口播与 H3 音色样本已生成"
-          : "上传参考图并完成分析后自动制作，或点击「开始制作配音」",
+          ? "TTS 试听与 H3 音色样本已生成（成片口播由 H3 生成）"
+          : reviewOk
+            ? "导演审查通过后点击「开始制作配音」"
+            : "请先完成导演审查",
   });
 
   if (input.forBuild === true) {

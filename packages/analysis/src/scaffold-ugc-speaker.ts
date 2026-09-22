@@ -1,16 +1,19 @@
 import type { SpeechEstimateLanguage } from "@hypit/estimate";
 
+import { sanitizeH3ShotAction } from "./h3-shot-prompt.js";
 import type { ScenePlan } from "./scene-plan.js";
 import {
   fitsH3Duration,
-  measureSegmentSeconds,
+  H3_MAX_DURATION_SEC,
+  H3_MIN_DURATION_SEC,
   resolveMeasureLanguage,
 } from "./measure-segments.js";
 import { buildOfficialScript, sanitizeScriptId } from "./script-format.js";
 import type { RuntimeCapabilities } from "./runtime-capabilities.js";
+import { groupScenesIntoShots, type ShotPlan } from "./shot-plan.js";
 
-/** Soft cap to avoid runaway cost; long scripts still get every segment up to this limit. */
-const MAX_TAKES = 12;
+/** Soft cap to avoid runaway cost; long references are truncated to this many H3 shots. */
+export const MAX_H3_TAKES = 12;
 
 const PHRASE_DELIMITER = /([。！？!?；;，,、])/u;
 
@@ -134,18 +137,89 @@ export function packScenesForH3(
 
 export function selectSpeakingScenes(scenes: readonly ScenePlan[]): readonly ScenePlan[] {
   const spoken = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
-  if (spoken.length <= MAX_TAKES) return spoken;
-  return spoken.slice(0, MAX_TAKES);
+  if (spoken.length <= MAX_H3_TAKES) return spoken;
+  return spoken.slice(0, MAX_H3_TAKES);
+}
+
+export function selectH3Shots(
+  scenes: readonly ScenePlan[],
+  referenceDuration: number,
+): {
+  readonly shots: readonly ShotPlan[];
+  readonly plannedTakeCount: number;
+  readonly truncated: boolean;
+} {
+  const all = groupScenesIntoShots(scenes, referenceDuration);
+  const truncated = all.length > MAX_H3_TAKES;
+  return {
+    shots: truncated ? all.slice(0, MAX_H3_TAKES) : all,
+    plannedTakeCount: all.length,
+    truncated,
+  };
+}
+
+/** Timeline slot for one H3 request (4–15s); last shot keeps the remainder from the reference. */
+export function measureH3ShotDuration(shot: { readonly durationSeconds: number }): number {
+  const seconds = Math.ceil(shot.durationSeconds);
+  return Math.min(H3_MAX_DURATION_SEC, Math.max(H3_MIN_DURATION_SEC, seconds));
+}
+
+export function buildH3ShotActionFallback(shot: {
+  readonly index: number;
+  readonly scenePromptHint: string;
+}): string {
+  const hint = shot.scenePromptHint.trim();
+  const parts = [
+    "Vertical 9:16 UGC product presenter shot; lip-sync the supplied script with natural emphasis.",
+    hint.length > 0 ? hint : "Keep the product or subject from the reference image clearly visible.",
+    shot.index === 0
+      ? "Open with strong hook energy in the first three seconds."
+      : "Continue seamlessly from the prior clip with matching lighting, wardrobe, and framing.",
+  ];
+  return parts.join(" ");
+}
+
+export function resolveH3ShotAction(
+  shot: Pick<ShotPlan, "id" | "index" | "scenePromptHint">,
+  actionMap?: ReadonlyMap<string, string>,
+): string {
+  const mapped = actionMap?.get(shot.id);
+  if (mapped !== undefined) {
+    const sanitized = sanitizeH3ShotAction(mapped);
+    if (sanitized !== undefined) return sanitized;
+  }
+  return buildH3ShotActionFallback(shot);
+}
+
+type H3Take = {
+  readonly id: string;
+  readonly text: string;
+  readonly shot: ShotPlan;
+};
+
+function resolveReferenceDuration(
+  scenes: readonly ScenePlan[],
+  referenceDuration: number,
+): number {
+  if (referenceDuration > 0) return referenceDuration;
+  const sceneEnd = scenes.reduce((max, scene) => Math.max(max, scene.end), 0);
+  return Math.max(4, Math.ceil(sceneEnd));
+}
+
+function expandShotsForH3(shots: readonly ShotPlan[]): readonly H3Take[] {
+  return shots.map((shot) => ({ id: shot.id, text: shot.text, shot }));
 }
 
 export function buildOfficialSpeakerSvml(input: {
   readonly scenes: readonly ScenePlan[];
+  readonly referenceDuration?: number;
   readonly language: string;
   readonly capabilities: RuntimeCapabilities;
   readonly voiceSampleText: string;
   readonly voiceCastingDirection: string;
   readonly voiceAssetRel?: string;
   readonly productImageRef: string;
+  readonly shotActions?: ReadonlyMap<string, string>;
 }): {
   readonly scriptBody: string;
   readonly imports: string;
@@ -155,16 +229,23 @@ export function buildOfficialSpeakerSvml(input: {
   readonly timelineTakes: string;
   readonly visualItems: string;
   readonly voiceAudioRef: string;
+  readonly h3ShotPlan: {
+    readonly takeCount: number;
+    readonly plannedTakeCount: number;
+    readonly truncated: boolean;
+  };
 } {
-  const speaking = selectSpeakingScenes(packScenesForH3(input.scenes, input.language));
-  const scriptBody = buildOfficialScript(speaking.map((scene) => ({
-    id: sanitizeScriptId(scene.momentId),
-    text: scene.text,
+  const referenceDuration = resolveReferenceDuration(input.scenes, input.referenceDuration);
+  const { shots, plannedTakeCount, truncated } = selectH3Shots(input.scenes, referenceDuration);
+  const takes = expandShotsForH3(shots);
+  const scriptBody = buildOfficialScript(takes.map((take) => ({
+    id: sanitizeScriptId(take.id),
+    text: take.text,
   })));
 
   const imports = [
     input.capabilities.fishSpeech ? `\n  <import as="fish" from="@hypit/fishaudio-speech@1"/>` : "",
-    `\n  <import as="speaker-kit" source="@hypit/seedance-kits/speaker"/>`,
+    `\n  <import as="h3-kit" source="@hypit/minimax-h3-kits/ugc-replica"/>`,
   ].join("");
 
   const voiceSample = xmlEscape(input.voiceSampleText.slice(0, 200));
@@ -191,33 +272,40 @@ export function buildOfficialSpeakerSvml(input: {
   const timelineTakes: string[] = [];
   const visualItems: string[] = [];
 
-  for (const scene of speaking) {
-    const segId = sanitizeScriptId(scene.momentId);
-    const duration = measureSegmentSeconds(scene.text, input.language);
-    const action = xmlEscape(
-      "Deliver this passage as an engaged vertical social-video product presenter. "
-      + "Natural lip-sync, lively emphasis, small posture shifts between phrases. "
-      + "Keep the product/subject from the reference image clearly visible.",
-    );
-    takeBlocks.push(`
-  <text:Value id="${segId}-action">${action}</text:Value>
-  <text:Render id="${segId}-prompt" template={speaker-kit.speaker-v1} recipe={recipes.speaker.host}>
-    <text:Set name="dialogue" text={story.segment.${segId}.dialogue}/>
-    <text:Set name="action" text={${segId}-action}/>
+  for (const [index, take] of takes.entries()) {
+    const takeId = sanitizeScriptId(take.id);
+    const duration = measureH3ShotDuration({ durationSeconds: take.shot.durationSeconds });
+    const action = xmlEscape(resolveH3ShotAction(take.shot, input.shotActions));
+    const imageRef = index === 0
+      ? input.productImageRef
+      : `${sanitizeScriptId(takes[index - 1]!.id)}-last.image`;
+    const blocks = [
+      `
+  <text:Value id="${takeId}-action">${action}</text:Value>
+  <text:Render id="${takeId}-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}>
+    <text:Set name="dialogue" text={story.segment.${takeId}.dialogue}/>
+    <text:Set name="action" text={${takeId}-action}/>
   </text:Render>
-  <h3:ReferenceVideo id="${segId}-take" prompt={${segId}-prompt} duration="${duration}"
+  <h3:ReferenceVideo id="${takeId}-take" prompt={${takeId}-prompt} duration="${duration}"
     resolution="768P" aspect-ratio="9:16">
-    <h3:Reference image={${input.productImageRef}}/>
+    <h3:Reference image={${imageRef}}/>
     <h3:Reference audio={${voiceAudioRef}}/>
   </h3:ReferenceVideo>
-  <pipeline:Normalize id="${segId}-media" source={${segId}-take.video}
-    video="primary-moving" audio="default" span-authority="video" clock={clock}/>
-  <whisperx:SemanticTake id="${segId}-semantic" narrative={story}
-    segment={story.segment.${segId}} media={${segId}-media.media} language="${input.language}"/>`);
-    semanticBlocks.push("");
-    timelineTakes.push(`    <time:Take source={${segId}-semantic.take}/>`);
-    visualItems.push(`    <media-track:Item id="${segId}-hero" media={${segId}-media.media}
-      during={story.segment.${segId}}
+  <pipeline:Normalize id="${takeId}-media" source={${takeId}-take.video}
+    video="primary-moving" audio="default" span-authority="video" clock={clock}/>`,
+    ];
+    if (index < takes.length - 1) {
+      blocks.push(`
+  <pipeline:ExtractFrame id="${takeId}-last" source={${takeId}-take.video}
+    video="primary-moving" at="last"/>`);
+    }
+    takeBlocks.push(blocks.join(""));
+    semanticBlocks.push(`
+  <whisperx:SemanticTake id="${takeId}-semantic" narrative={story}
+    segment={story.segment.${takeId}} media={${takeId}-media.media} language="${input.language}"/>`);
+    timelineTakes.push(`    <time:Take source={${takeId}-semantic.take}/>`);
+    visualItems.push(`    <media-track:Item id="${takeId}-hero" media={${takeId}-media.media}
+      during={story.segment.${takeId}}
       frame={speech-frame} appearance={recipes.media.hero}/>`);
   }
 
@@ -230,5 +318,10 @@ export function buildOfficialSpeakerSvml(input: {
     timelineTakes: timelineTakes.join("\n"),
     visualItems: visualItems.join("\n"),
     voiceAudioRef,
+    h3ShotPlan: {
+      takeCount: takes.length,
+      plannedTakeCount,
+      truncated,
+    },
   };
 }

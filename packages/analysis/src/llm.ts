@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 import { resolveGatewayText } from "./runtime-text.js";
 
@@ -51,16 +51,37 @@ export async function loadChatGateway(
   }
 }
 
+function imageMediaType(path: string): string {
+  const ext = extname(path).toLowerCase();
+  if (ext === ".png") return "image/png";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".avif") return "image/avif";
+  return "image/jpeg";
+}
+
+async function imageDataUrl(path: string): Promise<string> {
+  const bytes = await readFile(path);
+  return `data:${imageMediaType(path)};base64,${bytes.toString("base64")}`;
+}
+
 export async function chatCompletion(input: {
   readonly gateway: ChatGatewayConfig;
   readonly system: string;
   readonly user: string;
+  readonly imagePath?: string;
 }): Promise<string> {
   const secret = process.env[input.gateway.apiKeyEnv]?.trim();
   if (secret === undefined || secret.length === 0) {
     throw new Error(`缺少 ${input.gateway.apiKeyEnv}，无法调用对话模型`);
   }
   const base = input.gateway.baseUrl.replace(/\/+$/u, "");
+  const userContent = input.imagePath === undefined
+    ? input.user
+    : [
+      { type: "text", text: input.user },
+      { type: "image_url", image_url: { url: await imageDataUrl(input.imagePath) } },
+    ];
   const response = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
@@ -72,7 +93,7 @@ export async function chatCompletion(input: {
       temperature: 0.4,
       messages: [
         { role: "system", content: input.system },
-        { role: "user", content: input.user },
+        { role: "user", content: userContent },
       ],
     }),
     signal: AbortSignal.timeout(input.gateway.requestTimeoutMs),
@@ -91,13 +112,21 @@ export async function chatCompletion(input: {
   return content;
 }
 
+function repairJsonText(text: string): string {
+  return text
+    .replace(/,\s*([}\]])/gu, "$1")
+    .replace(/\u201c|\u201d/gu, "\"")
+    .replace(/\u2018|\u2019/gu, "'");
+}
+
 export function extractJsonObject(text: string): Record<string, unknown> {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/u.exec(text);
   const candidate = fenced?.[1]?.trim() ?? text.trim();
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("模型未返回有效 JSON");
-  const parsed: unknown = JSON.parse(candidate.slice(start, end + 1));
+  const jsonText = repairJsonText(candidate.slice(start, end + 1));
+  const parsed: unknown = JSON.parse(jsonText);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("模型 JSON 格式无效");
   return parsed as Record<string, unknown>;
 }

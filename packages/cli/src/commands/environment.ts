@@ -221,6 +221,8 @@ export async function runEnvironmentCommand(input: {
     const controller = await runtimeController(profile);
     if (args.action === "up") {
       const packageRoot = await packageRootForProject();
+      const { loadWorkspaceEnv } = await import("@hypit/credential-store-env");
+      await loadWorkspaceEnv(packageRoot);
       const host = await runtimeHost(profile, packageRoot);
       const prepared = await host.prepare(
         { ...(args.endpoints === undefined ? {} : { endpoints: args.endpoints }), ...(reportPackageProgress === undefined ? {} : { onProgress: reportPackageProgress }) },

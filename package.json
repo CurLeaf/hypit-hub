@@ -230,6 +230,7 @@
     "@hypit/media-track-studio": "workspace:*",
     "@hypit/mimo-speech": "workspace:*",
     "@hypit/minimax-h3": "workspace:*",
+    "@hypit/minimax-h3-kits": "workspace:*",
     "@hypit/nano-banana": "workspace:*",
     "@hypit/narrative": "workspace:*",
     "@hypit/performance": "workspace:*",

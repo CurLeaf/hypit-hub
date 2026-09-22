@@ -15,6 +15,7 @@
     "@hypit/generation": "workspace:*",
     "@hypit/package-loader-node": "workspace:*",
     "@hypit/protocol": "workspace:*",
+    "@hypit/resource-store-s3": "workspace:*",
     "@hypit/runtime-kit": "workspace:*",
     "@hypit/seedance": "workspace:*"
   },

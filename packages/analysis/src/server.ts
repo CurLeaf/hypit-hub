@@ -22,8 +22,21 @@ import {
 import { writeReferenceArchive } from "./reference-archive.js";
 import { DEFAULT_VIDEO_NAME, materializeDefaultVideo, resolveDefaultVideoUrl } from "./default-video.js";
 import { loadChatGateway } from "./llm.js";
-import type { AnalysisConfigView, AnalysisSessionView } from "./shared.js";
-import { prepareProductAdaptation } from "./prepare-adaptation.js";
+import type { AnalysisConfigView, AnalysisSessionView, DirectorReviewView } from "./shared.js";
+import {
+  approveDirectorReview,
+  canStartAdaptation,
+  ensureDirectorReviewRequest,
+  resetDirectorDrafts,
+} from "./director-review.js";
+import {
+  completeDirectorAgentView,
+  initialDirectorAgentView,
+  resolveDirectorAgentConfig,
+  runDirectorAgent,
+} from "./director-agent.js";
+import { prepareProductAdaptation, resetAdaptationArtifacts } from "./prepare-adaptation.js";
+import { shouldInvalidateForGoalChange } from "./product-adaptation-invalidation.js";
 import { assertReplicationReady, checkReplicationReadiness } from "./replica-readiness.js";
 import {
   clearWorkflowState,
@@ -33,9 +46,11 @@ import {
   loadWorkflowState,
   enrichSessionWithSavedInsight,
   mergeWorkflowState,
+  refreshScaffoldCheck,
   runFullReplication,
   saveWorkflowState,
   scaffoldProject,
+  workflowStateFromSession,
 } from "./workflow.js";
 import { loadWorkspaceEnv } from "./workspace-env.js";
 
@@ -92,7 +107,15 @@ async function readBody(request: import("node:http").IncomingMessage): Promise<B
 
 async function mergeWorkflow(session: AnalysisSessionView): Promise<AnalysisSessionView> {
   const workflow = await loadWorkflowState(session.workspaceRoot);
-  return enrichSessionWithSavedInsight(mergeWorkflowState(session, workflow));
+  let merged = enrichSessionWithSavedInsight(mergeWorkflowState(session, workflow));
+  if (merged.scaffold?.checkOk === false) {
+    const refreshed = await refreshScaffoldCheck(merged.workspaceRoot, merged.scaffold);
+    if (refreshed.checkOk !== merged.scaffold.checkOk || refreshed.checkSummary !== merged.scaffold.checkSummary) {
+      merged = { ...merged, scaffold: refreshed };
+      await saveWorkflowState(merged.workspaceRoot, workflowStateFromSession(merged));
+    }
+  }
+  return merged;
 }
 
 export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
@@ -103,6 +126,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
   let workflowRunning = false;
   let adaptationRunning = false;
   let adaptationQueued = false;
+  let adaptationGeneration = 0;
+  let directorAgentRunning = false;
+  let directorAgentQueued = false;
   let buildPoller: ReturnType<typeof setInterval> | undefined;
 
   const config: AnalysisConfigView = {
@@ -135,6 +161,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         defaultVideoUrl,
         defaultVideoName: DEFAULT_VIDEO_NAME,
       }),
+      directorAgent: resolveDirectorAgentConfig(),
     };
   }
 
@@ -153,6 +180,175 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
     };
   }
 
+  async function ensureDirectorReviewReady(): Promise<DirectorReviewView> {
+    if (session.insight === undefined) {
+      throw new Error("请先完成参考视频分析");
+    }
+    if (session.directorReview !== undefined) return session.directorReview;
+    const directorReview = await ensureDirectorReviewRequest({
+      session,
+      insight: session.insight,
+    });
+    session = { ...session, directorReview };
+    await persistWorkflow();
+    return directorReview;
+  }
+
+  async function finalizeDirectorApproval(): Promise<void> {
+    if (session.insight === undefined) throw new Error("请先完成参考视频分析");
+    const issues = await approveDirectorReview(options.workspaceRoot, {
+      session,
+      insight: session.insight,
+    });
+    if (issues.length > 0) {
+      throw new Error(issues.join("；"));
+    }
+    session = {
+      ...session,
+      directorReview: {
+        ...(session.directorReview ?? await ensureDirectorReviewRequest({
+          session,
+          insight: session.insight,
+        })),
+        status: "approved",
+        phase: "导演审查已通过",
+        approvedAt: Date.now(),
+        adaptationGoal: session.adaptationGoal?.trim() || undefined,
+      },
+    };
+    await persistWorkflow();
+    if (!adaptationRunning) void scheduleAdaptation(session.adaptationGoal);
+  }
+
+  async function scheduleDirectorAgent(force = false): Promise<void> {
+    const agentConfig = resolveDirectorAgentConfig();
+    if (!force && !agentConfig.auto) return;
+    if (!agentConfig.available) return;
+    if (session.productReferencePath === undefined || session.analysisPath === undefined) return;
+    if (session.insight === undefined) return;
+    if (session.directorReview?.status === "approved") return;
+    if (!force && (session.adaptationGoal?.trim().length ?? 0) === 0) return;
+    if (directorAgentRunning) {
+      directorAgentQueued = true;
+      return;
+    }
+    directorAgentRunning = true;
+    try {
+      const review = await ensureDirectorReviewReady();
+      session = {
+        ...session,
+        directorReview: {
+          ...review,
+          status: "pending",
+          phase: "Cursor Agent 正在审查…",
+          agent: initialDirectorAgentView(agentConfig, "Cursor Agent 正在审查…"),
+        },
+      };
+      await persistWorkflow();
+
+      const result = await runDirectorAgent({
+        workspaceRoot: options.workspaceRoot,
+        session,
+        insight: session.insight,
+        onPhase: (phase) => {
+          session = {
+            ...session,
+            directorReview: {
+              ...(session.directorReview ?? review),
+              status: "pending",
+              phase,
+              agent: {
+                ...(session.directorReview?.agent ?? initialDirectorAgentView(agentConfig, phase)),
+                status: "running",
+                phase,
+              },
+            },
+          };
+        },
+      });
+
+      if (result.ok) {
+        await finalizeDirectorApproval();
+        session = {
+          ...session,
+          directorReview: {
+            ...(session.directorReview ?? review),
+            status: "approved",
+            phase: "导演审查已通过",
+            approvedAt: Date.now(),
+            adaptationGoal: session.adaptationGoal?.trim() || undefined,
+            agent: completeDirectorAgentView(session.directorReview?.agent, result),
+          },
+        };
+        await persistWorkflow();
+        return;
+      }
+
+      session = {
+        ...session,
+        directorReview: {
+          ...(session.directorReview ?? review),
+          status: "pending",
+          phase: "等待导演审查",
+          agent: completeDirectorAgentView(session.directorReview?.agent, result),
+        },
+      };
+      await persistWorkflow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      session = {
+        ...session,
+        directorReview: {
+          ...(session.directorReview ?? {
+            status: "pending",
+            dir: "",
+            requestPath: "",
+            briefPath: "",
+            treatmentPath: "",
+            scenesPath: "",
+            checklistPath: "",
+          }),
+          status: "pending",
+          phase: "等待导演审查",
+          agent: {
+            provider: "cursor",
+            status: "error",
+            phase: "导演 Agent 未完成",
+            error: message,
+            finishedAt: Date.now(),
+          },
+        },
+      };
+      await persistWorkflow();
+    } finally {
+      directorAgentRunning = false;
+      if (directorAgentQueued) {
+        directorAgentQueued = false;
+        void scheduleDirectorAgent(force);
+      }
+    }
+  }
+
+  const clearedProductAdaptationSession = (): Pick<
+    AnalysisSessionView,
+    "adaptation" | "brief" | "treatment" | "scaffold" | "build" | "workflowJob" | "directorReview"
+  > => ({
+    adaptation: undefined,
+    brief: undefined,
+    treatment: undefined,
+    scaffold: undefined,
+    build: undefined,
+    workflowJob: undefined,
+    directorReview: undefined,
+  });
+
+  async function invalidateProductAdaptationState(): Promise<void> {
+    adaptationGeneration += 1;
+    adaptationQueued = false;
+    await resetDirectorDrafts(options.workspaceRoot);
+    await resetAdaptationArtifacts(options.workspaceRoot);
+  }
+
   async function persistWorkflow(): Promise<void> {
     await saveWorkflowState(options.workspaceRoot, {
       ...(session.videoPath === undefined ? {} : { videoPath: session.videoPath }),
@@ -167,14 +363,28 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       ...(session.build === undefined ? {} : { build: session.build }),
       ...(session.adaptation === undefined ? {} : { adaptation: session.adaptation }),
       ...(session.adaptationGoal === undefined ? {} : { adaptationGoal: session.adaptationGoal }),
+      ...(session.directorReview === undefined ? {} : { directorReview: session.directorReview }),
     });
+  }
+
+  async function requestDirectorReview(): Promise<void> {
+    if (session.analysisPath === undefined || session.insight === undefined) return;
+    if (session.productReferencePath === undefined) return;
+    const directorReview = await ensureDirectorReviewRequest({
+      session,
+      insight: session.insight,
+    });
+    session = { ...session, directorReview };
+    await persistWorkflow();
   }
 
   async function scheduleAdaptation(goal?: string): Promise<void> {
     const effectiveGoal = goal ?? session.adaptationGoal;
     if (session.productReferencePath === undefined || session.analysisPath === undefined) return;
+    if (!canStartAdaptation(session.directorReview)) return;
     if (adaptationRunning) return;
     adaptationRunning = true;
+    const generation = adaptationGeneration;
     session = {
       ...session,
       adaptation: { status: "running", phase: "准备改编配音…" },
@@ -187,9 +397,11 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
         ...(runtimePath === undefined ? {} : { runtimePath }),
         ...(effectiveGoal === undefined ? {} : { goal: effectiveGoal }),
         onPhase: (phase) => {
+          if (generation !== adaptationGeneration) return;
           session = { ...session, adaptation: { status: "running", phase } };
         },
       });
+      if (generation !== adaptationGeneration) return;
       const briefMarkdown = adaptation.briefPath === undefined
         ? undefined
         : await readFile(adaptation.briefPath, "utf8");
@@ -208,6 +420,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       };
       await persistWorkflow();
     } catch (error) {
+      if (generation !== adaptationGeneration) return;
       const message = error instanceof Error ? error.message : String(error);
       session = {
         ...session,
@@ -216,7 +429,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       await persistWorkflow();
     } finally {
       adaptationRunning = false;
-      if (adaptationQueued) {
+      if (adaptationQueued && generation === adaptationGeneration) {
         adaptationQueued = false;
         void scheduleAdaptation();
       }
@@ -295,6 +508,12 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/session") {
             session = await mergeWorkflow(session);
+            if (session.productReferencePath !== undefined
+              && session.insight !== undefined
+              && session.analysisPath !== undefined
+              && session.directorReview === undefined) {
+              await requestDirectorReview();
+            }
             json(response, 200, { ...session, runtimeProfile: await resolveRuntime() });
             return;
           }
@@ -362,7 +581,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                 };
                 await persistWorkflow();
                 if (session.productReferencePath !== undefined) {
-                  void scheduleAdaptation(session.adaptationGoal);
+                  await requestDirectorReview();
                 }
               } catch (error) {
                 session = {
@@ -393,13 +612,66 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/adaptation-goal") {
             const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as { goal?: string };
-            const goal = body.goal?.trim();
-            if (goal === undefined || goal.length === 0) {
-              const { adaptationGoal: _clearedGoal, ...retained } = session;
-              session = retained;
+            const previousGoal = session.adaptationGoal?.trim() ?? "";
+            const nextGoal = body.goal?.trim() ?? "";
+            session = { ...session, adaptationGoal: nextGoal || undefined };
+            if (shouldInvalidateForGoalChange(session, previousGoal, nextGoal)) {
+              await invalidateProductAdaptationState();
+              session = { ...session, ...clearedProductAdaptationSession() };
+              await persistWorkflow();
+              if (session.analysisPath !== undefined && session.insight !== undefined) {
+                void requestDirectorReview();
+              }
             } else {
-              session = { ...session, adaptationGoal: goal };
+              await persistWorkflow();
             }
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/director/approve") {
+            if (session.productReferencePath === undefined || session.analysisPath === undefined) {
+              throw new Error("请先完成参考视频分析并上传参考图");
+            }
+            await finalizeDirectorApproval();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/director/run-agent") {
+            if (session.productReferencePath === undefined || session.analysisPath === undefined) {
+              throw new Error("请先完成参考视频分析并上传参考图");
+            }
+            if (session.insight === undefined) throw new Error("请先完成参考视频分析");
+            const agentConfig = resolveDirectorAgentConfig();
+            if (!agentConfig.available) {
+              throw new Error(agentConfig.missing ?? "导演 Agent 不可用，请配置 CURSOR_API_KEY");
+            }
+            if (directorAgentRunning) {
+              json(response, 202, session);
+              return;
+            }
+            json(response, 202, {
+              ...session,
+              directorReview: {
+                ...(session.directorReview ?? await ensureDirectorReviewRequest({
+                  session,
+                  insight: session.insight,
+                })),
+                status: "pending",
+                phase: "Cursor Agent 正在审查…",
+                agent: initialDirectorAgentView(agentConfig, "Cursor Agent 正在审查…"),
+              },
+            });
+            void scheduleDirectorAgent(true);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/director/refresh") {
+            if (session.insight === undefined) throw new Error("请先完成参考视频分析");
+            await invalidateProductAdaptationState();
+            session = { ...session, ...clearedProductAdaptationSession() };
+            await requestDirectorReview();
             await persistWorkflow();
             json(response, 200, session);
             return;
@@ -407,6 +679,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/prepare-adaptation") {
             if (adaptationRunning) throw new Error("配音制作任务已在运行");
+            if (!canStartAdaptation(session.directorReview)) {
+              throw new Error("导演审查尚未通过。请先在 Cursor 编辑 .hypit/analysis/director/ 并点击「导演审查通过」。");
+            }
             const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as { goal?: string };
             json(response, 202, { ...session, adaptation: { status: "running", phase: "准备改编配音…" } });
             void scheduleAdaptation(body.goal);
@@ -587,6 +862,12 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/build") {
             if (workflowRunning) throw new Error("已有任务在运行");
+            session = await mergeWorkflow(session);
+            if (session.scaffold !== undefined) {
+              const refreshed = await refreshScaffoldCheck(session.workspaceRoot, session.scaffold);
+              session = { ...session, scaffold: refreshed };
+              await persistWorkflow();
+            }
             const runtimePath = await resolveRuntime();
             await assertReplicationReady(session, { forBuild: true, ...(runtimePath === undefined ? {} : { runtimePath }) });
             workflowRunning = true;
@@ -686,18 +967,21 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             await writeFile(staging, fileBytes);
             const target = await importUploadedFile(staging, options.workspaceRoot, fileName);
             const referenceChanged = session.productReferencePath !== target;
+            if (referenceChanged) {
+              await invalidateProductAdaptationState();
+            }
             const { adaptation: _adaptation, scaffold: _scaffold, build: _build, workflowJob: _workflowJob, ...retained } = session;
             session = {
               ...(referenceChanged ? retained : session),
               productReferencePath: target,
               productReferenceName: basename(target),
               videoAroll: session.videoAroll ?? true,
+              ...(referenceChanged ? clearedProductAdaptationSession() : {}),
             };
             await persistWorkflow();
             json(response, 200, session);
-            if (session.analysisPath !== undefined) {
-              if (adaptationRunning) adaptationQueued = true;
-              else void scheduleAdaptation(session.adaptationGoal);
+            if (referenceChanged && session.analysisPath !== undefined && session.insight !== undefined) {
+              void requestDirectorReview();
             }
             return;
           }
@@ -721,6 +1005,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               : "application/octet-stream";
             response.statusCode = 200;
             response.setHeader("content-type", type);
+            if (url.searchParams.get("download") === "1") {
+              response.setHeader("content-disposition", `attachment; filename="${basename(videoPath)}"`);
+            }
             createReadStream(videoPath).pipe(response);
             return;
           }

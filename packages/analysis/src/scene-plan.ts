@@ -59,19 +59,11 @@ export function buildScenes(
 export function scriptDialogue(scenes: readonly ScenePlan[]): string {
   const parts: string[] = [];
   for (const [index, scene] of scenes.entries()) {
-    const words = scene.text.replace(/\s+/gu, "");
-    if (words.length === 0) continue;
-    const chunks: string[] = [];
-    for (let offset = 0; offset < words.length; offset += 6) {
-      chunks.push(words.slice(offset, offset + 6));
-    }
-    let body = chunks.join(" || ");
-    if (index > 0) {
-      body = "@" + scene.momentId + " " + body + " @/" + scene.momentId;
-    }
-    parts.push(body);
+    const body = scene.text.replace(/\s+/gu, "").trim();
+    if (body.length === 0) continue;
+    parts.push(index > 0 ? `@${scene.momentId} ${body} @/${scene.momentId}` : body);
   }
-  return parts.join(" || ").trim();
+  return parts.join(" ").trim();
 }
 
 export function assignScenePrompts(

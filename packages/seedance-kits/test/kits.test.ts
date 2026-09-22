@@ -6,6 +6,7 @@ import { renderText, sealTextBindings, textTemplateFromSvsRecipes } from "@hypit
 
 const cases = [
   { file: "speaker-v1.svs", id: "speaker-v1", bindings: { dialogue: "HOST: Meaning comes first." }, marker: "@audio1 is the speaker's voice-timbre reference" },
+  { file: "ugc-replica-v1.svs", id: "ugc-replica-v1", bindings: { dialogue: "HOST: Meaning comes first." }, marker: "visible on-camera person is optional" },
   { file: "broll-v1.svs", id: "broll-v1", bindings: { story: "A hand opens the product." }, marker: "silent B-roll" },
   { file: "podcast-v1.svs", id: "podcast-v1", bindings: { dialogue: "A: Hello.\nB: Hi." }, marker: "Host A uses @audio1" },
   { file: "call-v1.svs", id: "call-v1", bindings: { dialogue: "A: Hello.\nB: Hi." }, marker: "both tiles are live feeds" },

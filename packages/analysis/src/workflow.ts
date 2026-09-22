@@ -26,7 +26,7 @@ const WORKFLOW_STATE = ".hypit/analysis/workflow.json";
 
 export type WorkflowState = Pick<AnalysisSessionView,
   "insight" | "brief" | "treatment" | "scaffold" | "build" | "adaptation" | "adaptationGoal"
-  | "productReferencePath" | "productReferenceName" | "videoAroll"> & {
+  | "productReferencePath" | "productReferenceName" | "videoAroll" | "directorReview"> & {
   readonly videoPath?: string;
   readonly videoUrl?: string;
 };
@@ -44,6 +44,39 @@ export async function saveWorkflowState(workspaceRoot: string, state: WorkflowSt
   const path = join(workspaceRoot, WORKFLOW_STATE);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+export function workflowStateFromSession(session: AnalysisSessionView): WorkflowState {
+  return {
+    videoPath: session.videoPath,
+    productReferencePath: session.productReferencePath,
+    productReferenceName: session.productReferenceName,
+    videoAroll: session.videoAroll,
+    insight: session.insight,
+    brief: session.brief,
+    treatment: session.treatment,
+    scaffold: session.scaffold,
+    build: session.build,
+    adaptation: session.adaptation,
+    adaptationGoal: session.adaptationGoal,
+    directorReview: session.directorReview,
+  };
+}
+
+export async function refreshScaffoldCheck(
+  workspaceRoot: string,
+  scaffold: ScaffoldView,
+): Promise<ScaffoldView> {
+  try {
+    const check = await runCheck(workspaceRoot, scaffold.runPath);
+    return { ...scaffold, checkOk: check.ok, checkSummary: check.summary };
+  } catch (error) {
+    return {
+      ...scaffold,
+      checkOk: false,
+      checkSummary: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export async function clearWorkflowState(workspaceRoot: string): Promise<void> {
@@ -164,7 +197,7 @@ function productReferenceBriefLine(session: AnalysisSessionView): string {
   if (session.productReferencePath === undefined) return "";
   const label = session.productReferenceName ?? "用户参考图";
   const mode = session.videoAroll ?? true
-    ? "A-roll 使用 `h3:ReferenceVideo`（MiniMax H3，参考图+TTS 音色+改写口播），B-roll 使用 `gpt:Image` 参考"
+    ? "A-roll 使用 `h3:ReferenceVideo`（MiniMax H3 生成口播成片；TTS 仅音色样本），B-roll 使用 `gpt:Image` 参考"
     : "生成各分镜画面时作为 `gpt:Image` 参考输入；口播文案按爆款结构改写并用 TTS 配音";
   return "- 用户参考图：" + label + "（" + mode + "）";
 }
@@ -449,11 +482,11 @@ export async function scaffoldProject(input: {
     "完整示例参考：`" + (format?.example ?? "examples/byok-openai-compatible/templates/ugc-replica") + "`",
     "",
     input.productReferencePath !== undefined
-      ? "本工程保留参考片结构与 Hook 节奏，口播文案已按用户参考图与改编说明改写；配音由 TTS 生成后接入 H3 / WhisperX。"
+      ? "本工程保留参考片结构与 Hook 节奏，口播文案已按用户参考图与改编说明改写；成片口播由 H3 生成，字幕对齐 H3 音轨（TTS 供审查与音色样本）。"
       : "本工程已根据参考片转写、切镜点与口播结构自动生成 Script、分镜图 prompt、卡拉 OK 字幕与音频对齐。",
     ...(input.productReferencePath !== undefined
       ? ["", (input.videoAroll ?? input.session.videoAroll ?? true)
-        ? "A-roll：`h3:ReferenceVideo`（参考图 + TTS 音色样本 + 新口播文案）。B-roll：`gpt:Image` 参考图。"
+        ? "A-roll：`h3:ReferenceVideo`（参考图 + 音色样本 + H3 口播成片）。B-roll：`gpt:Image` 参考图。"
         : "用户参考图已接入各分镜 `gpt:Image` 的 `<gpt:Reference>`，用于保持产品/人物外观一致。"]
       : []),
   ].join("\n"), "utf8");
@@ -481,7 +514,7 @@ export async function scaffoldProject(input: {
   let checkOk = true;
   let checkSummary: string | undefined;
   try {
-    const check = await runCheck(input.session.workspaceRoot, runPath, input.runtimePath);
+    const check = await runCheck(input.session.workspaceRoot, runPath);
     checkOk = check.ok;
     checkSummary = check.summary;
   } catch (error) {

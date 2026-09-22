@@ -5,6 +5,8 @@ import type {
 } from "@hypit/runtime";
 import { verifyCredentialRef } from "@hypit/runtime";
 
+export { loadWorkspaceEnv } from "./workspace-env.js";
+
 /** Resolves only explicitly requested environment variables and never snapshots or enumerates env. */
 export class EnvironmentCredentialStore implements CredentialStore {
   readonly #environment: NodeJS.ProcessEnv;

@@ -417,6 +417,9 @@ importers:
       '@hypit/cli':
         specifier: workspace:*
         version: link:../cli
+      '@hypit/credential-store-env':
+        specifier: workspace:*
+        version: link:../credential-store-env
       '@hypit/driver-node':
         specifier: workspace:*
         version: link:../driver-node
@@ -747,6 +750,9 @@ importers:
       '@hypit/core':
         specifier: workspace:*
         version: link:../core
+      '@hypit/credential-store-env':
+        specifier: workspace:*
+        version: link:../credential-store-env
       '@hypit/driver-node':
         specifier: workspace:*
         version: link:../driver-node
@@ -2374,6 +2380,9 @@ importers:
       '@hypit/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@hypit/resource-store-s3':
+        specifier: workspace:*
+        version: link:../resource-store-s3
       '@hypit/runtime-kit':
         specifier: workspace:*
         version: link:../runtime-kit
@@ -2676,6 +2685,9 @@ importers:
       '@hypit/core':
         specifier: workspace:*
         version: link:../core
+      '@hypit/credential-store-env':
+        specifier: workspace:*
+        version: link:../credential-store-env
       '@hypit/driver-node':
         specifier: workspace:*
         version: link:../driver-node
@@ -2710,9 +2722,6 @@ importers:
       '@hypit/build-result':
         specifier: workspace:*
         version: link:../build-result
-      '@hypit/credential-store-env':
-        specifier: workspace:*
-        version: link:../credential-store-env
 
   packages/screen-overlay:
     dependencies:

@@ -50,9 +50,8 @@ export const minimaxH3Mapping: GenerationWireMapping = {
   routes: [
     { model: "minimax-h3/image-to-video", whenPresent: ["lastFrame"] },
     { model: "minimax-h3/image-to-video", whenPresent: ["firstFrame"] },
-    { model: "minimax-h3/reference-to-video", whenPresent: ["referenceImage"] },
+    { model: "minimax-h3/reference-to-video", whenPresent: ["referenceImage", "referenceAudio"] },
     { model: "minimax-h3/reference-to-video", whenPresent: ["referenceVideo"] },
-    { model: "minimax-h3/text-to-video" },
   ],
   fields: {
     prompt: { as: "value", field: "prompt" },

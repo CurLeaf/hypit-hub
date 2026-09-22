@@ -12,6 +12,7 @@
     "@hypit/build-result-kit": "workspace:*",
     "@hypit/compiler-node": "workspace:*",
     "@hypit/component-kit": "workspace:*",
+    "@hypit/credential-store-env": "workspace:*",
     "@hypit/core": "workspace:*",
     "@hypit/driver-node": "workspace:*",
     "@hypit/elaborator": "workspace:*",
