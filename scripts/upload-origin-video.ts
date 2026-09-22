@@ -50,7 +50,7 @@ async function main(): Promise<void> {
   if (!existsSync(originPath)) throw new Error(`缺少 ${originPath}`);
   const config = s3PublicUploadConfigFromEnv();
   if (config === undefined) {
-    throw new Error("缺少 S3_*。请先把 erp-admin-demo-1 的 OSS 配置写入仓库根目录 .env");
+    throw new Error("缺少 S3_*。请把对象存储配置写入仓库根目录 .env");
   }
   const bytes = await readFile(originPath);
   const url = await putS3PublicObject(config, {
@@ -60,14 +60,6 @@ async function main(): Promise<void> {
   });
   const expected = s3PublicCdnUrl(config, DEFAULT_VIDEO_OBJECT_KEY);
   await upsertEnvVar(resolve(repoRoot, ".env"), "HYPIT_DEFAULT_VIDEO_URL", url);
-  const exampleEnv = resolve(repoRoot, "examples/byok-openai-compatible/.env");
-  if (existsSync(exampleEnv) || existsSync(dirname(exampleEnv))) {
-    try {
-      await upsertEnvVar(exampleEnv, "HYPIT_DEFAULT_VIDEO_URL", url);
-    } catch {
-      // workspace copy is optional
-    }
-  }
   console.info(`uploaded ${originPath}`);
   console.info(`cdn ${url}`);
   if (url !== expected) console.info(`expected ${expected}`);

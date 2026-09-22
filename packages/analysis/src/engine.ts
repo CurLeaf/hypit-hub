@@ -191,43 +191,16 @@ export function suggestFormats(input: {
   readonly width: number;
   readonly height: number;
 }): readonly FormatSuggestionView[] {
-  const joined = input.words.map((word) => word.text).join(" ").toLowerCase();
   const vertical = input.height > input.width;
   const suggestions: FormatSuggestionView[] = [];
-  if (/rank|tier|top|第.{0,2}名|排行|榜单|级别/u.test(joined)) {
-    suggestions.push({
-      id: "ranking",
-      title: "Ranking / 榜单",
-      confidence: "high",
-      reason: "台词或结构出现排名、分级、对比语言。",
-      example: "examples/ranking-football/reference.svml",
-    });
-  }
-  if (/host|guest|采访|问答|你觉得|为什么/u.test(joined) || input.segments.length >= 4) {
-    suggestions.push({
-      id: "interview",
-      title: "街头采访 / 对话",
-      confidence: input.segments.length >= 4 ? "medium" : "low",
-      reason: "多段口语交替或采访式提问结构。",
-      example: "examples/interview/reference.svml",
-    });
-  }
-  if (/podcast|播客|我们|今天聊/u.test(joined)) {
-    suggestions.push({
-      id: "podcast",
-      title: "播客 / 双人对话",
-      confidence: "medium",
-      reason: "长段叙述或播客式开场。",
-      example: "examples/podcast/reference.svml",
-    });
-  }
+  const example = "packages/analysis/templates/recipes.svs";
   if (vertical && input.duration <= 90) {
     suggestions.push({
       id: "ugc",
       title: "竖屏 UGC / 口播",
-      confidence: "medium",
+      confidence: "high",
       reason: "竖屏短视频时长与口播密度匹配信息流形态。",
-      example: "examples/byok-openai-compatible/minimal.svml",
+      example,
     });
   }
   suggestions.push({
@@ -235,7 +208,7 @@ export function suggestFormats(input: {
     title: "讲解 / 产品说明",
     confidence: suggestions.length === 0 ? "high" : "low",
     reason: "通用讲解片结构：Hook → 论证 → 演示 → 收束。",
-    example: "examples/complex-explainer/productions/explainer/",
+    example,
   });
   return suggestions;
 }

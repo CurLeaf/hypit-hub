@@ -1,7 +1,6 @@
 /**
- * Public-read OSS/S3 upload using the same env names and presigned POST as
- * erp-admin-demo-1 (`scripts/upload-file.ts` / `S3PresignedPost`). MiniMax and
- * other gateways without a usable `POST /files` then fetch `{S3_CDN}/…`.
+ * Public-read OSS/S3 upload via presigned POST. MiniMax and other gateways
+ * without a usable `POST /files` then fetch `{S3_CDN}/…`.
  */
 import { createHmac } from "node:crypto";
 

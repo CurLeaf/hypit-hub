@@ -19,7 +19,7 @@ const config = {
   keyPrefix: "hypit/references",
 } as const;
 
-test("S3 public upload reads the same env names as erp-admin-demo-1", () => {
+test("S3 public upload reads S3_* env names", () => {
   assert.equal(s3PublicUploadConfigFromEnv({}), undefined);
   const loaded = s3PublicUploadConfigFromEnv({
     S3_ENDPOINT: "https://bucket.s3.oss-cn-hangzhou.aliyuncs.com",

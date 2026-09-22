@@ -445,16 +445,6 @@ export async function scaffoldProject(input: {
     : resolve(input.brief.path, "..");
   await mkdir(productionDir, { recursive: true });
 
-  const templateByFormat: Record<string, string> = {
-    ranking: "examples/ranking-football",
-    interview: "examples/interview",
-    podcast: "examples/podcast",
-    ugc: "examples/byok-openai-compatible/templates/ugc-replica",
-    explainer: "examples/byok-openai-compatible/templates/ugc-replica",
-  };
-  const templateKey = templateByFormat[formatId] ?? "examples/byok-openai-compatible/templates/ugc-replica";
-  const templateDir = resolve(input.distributionRoot, templateKey);
-
   const preparedAdaptation = input.preparedAdaptation ?? input.session.adaptation;
   const { authorPath, runPath } = await generateFormatReplicaProject({
     session: input.session,
@@ -479,7 +469,7 @@ export async function scaffoldProject(input: {
     "",
     format?.reason ?? "根据参考片时长、画幅与口播结构推断。",
     "",
-    "完整示例参考：`" + (format?.example ?? "examples/byok-openai-compatible/templates/ugc-replica") + "`",
+    "完整示例参考：`" + (format?.example ?? "packages/analysis/templates/recipes.svs") + "`",
     "",
     input.productReferencePath !== undefined
       ? "本工程保留参考片结构与 Hook 节奏，口播文案已按用户参考图与改编说明改写；成片口播由 H3 生成，字幕对齐 H3 音轨（TTS 供审查与音色样本）。"

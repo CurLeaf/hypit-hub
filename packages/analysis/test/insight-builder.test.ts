@@ -85,7 +85,7 @@ test("buildInsightFromSession avoids legacy template phrasing", () => {
       title: "讲解 / 产品说明",
       confidence: "high",
       reason: "产品功能讲解",
-      example: "examples/complex-explainer/productions/explainer/",
+      example: "packages/analysis/templates/recipes.svs",
     }],
   });
 
