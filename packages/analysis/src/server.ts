@@ -19,7 +19,6 @@ import {
   loadSavedAnalysis,
   runFullAnalysis,
 } from "./engine.js";
-import { writeReferenceArchive } from "./reference-archive.js";
 import { DEFAULT_VIDEO_NAME, materializeDefaultVideo, resolveDefaultVideoUrl } from "./default-video.js";
 import { loadChatGateway } from "./llm.js";
 import type { AnalysisConfigView, AnalysisSessionView, DirectorReviewView } from "./shared.js";
@@ -40,16 +39,13 @@ import { shouldInvalidateForGoalChange } from "./product-adaptation-invalidation
 import { assertReplicationReady, checkReplicationReadiness } from "./replica-readiness.js";
 import {
   clearWorkflowState,
-  generateBrief,
   generateInsight,
-  generateTreatment,
   loadWorkflowState,
   enrichSessionWithSavedInsight,
   mergeWorkflowState,
   refreshScaffoldCheck,
   runFullReplication,
   saveWorkflowState,
-  scaffoldProject,
   workflowStateFromSession,
 } from "./workflow.js";
 import { loadWorkspaceEnv } from "./workspace-env.js";
@@ -449,7 +445,6 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               status: status.status === "complete" ? "complete" : status.status === "error" ? "error" : "building",
               phase: status.phase,
               ...(status.error === undefined ? {} : { error: status.error }),
-              ...(session.build?.planSummary === undefined ? {} : { planSummary: session.build.planSummary }),
               ...(session.build?.outputVideoPath === undefined ? {} : { outputVideoPath: session.build.outputVideoPath }),
             },
             workflowJob: {
@@ -698,7 +693,6 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             const body = JSON.parse((await readBody(request)).toString("utf8")) as {
               replacements?: string;
               goal?: string;
-              autoBuild?: boolean;
               speechMode?: "reference" | "tts";
               formatId?: string;
               videoAroll?: boolean;
@@ -732,39 +726,13 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                     };
                   },
                 });
-                session = { ...session, ...workflow, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
+                session = {
+                  ...session,
+                  ...workflow,
+                  ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }),
+                  workflowJob: { id: workflowId, status: "complete", phase: "工程已生成，可开始生成视频" },
+                };
                 await persistWorkflow();
-
-                if (body.autoBuild !== false) {
-                  session = {
-                    ...session,
-                    workflowJob: { id: workflowId, status: "running", phase: "检查 Runtime…" },
-                    build: { status: "planning", phase: "准备生成…" },
-                  };
-                  await ensureRuntimeUp(options.workspaceRoot, runtimePath);
-                  const runPath = workflow.scaffold?.runPath;
-                  if (runPath === undefined) throw new Error("工程脚手架失败");
-                  session = {
-                    ...session,
-                    workflowJob: { id: workflowId, status: "running", phase: "提交生成…" },
-                    build: { status: "building", phase: "提交生成…" },
-                  };
-                  const buildId = await submitBuild(options.workspaceRoot, runPath, runtimePath);
-                  const outputPath = resolve(workflow.scaffold!.productionDir, "output", "final.mp4");
-                  session = {
-                    ...session,
-                    build: { id: buildId, status: "building", phase: "生成中…" },
-                    workflowJob: { id: workflowId, status: "running", phase: "生成视频中…" },
-                  };
-                  await persistWorkflow();
-                  startBuildPolling(buildId, runtimePath, outputPath);
-                } else {
-                  session = {
-                    ...session,
-                    workflowJob: { id: workflowId, status: "complete", phase: "方案已生成，可手动 build" },
-                  };
-                  await persistWorkflow();
-                }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 const nextBuild = session.build?.status === "building" || session.build?.status === "planning"
@@ -780,83 +748,6 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                 workflowRunning = false;
               }
             })();
-            return;
-          }
-
-          if (request.method === "POST" && url.pathname === "/__analysis/interpret") {
-            if (session.analysisPath === undefined) throw new Error("请先完成媒体分析");
-            const runtimePath = await resolveRuntime();
-            const insight = await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
-            session = { ...session, insight };
-            await persistWorkflow();
-            json(response, 200, session);
-            return;
-          }
-
-          if (request.method === "POST" && url.pathname === "/__analysis/brief") {
-            const body = JSON.parse((await readBody(request)).toString("utf8")) as { replacements?: string; goal?: string };
-            const runtimePath = await resolveRuntime();
-            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
-            const brief = await generateBrief({
-              session,
-              insight,
-              ...(body.replacements === undefined ? {} : { replacements: body.replacements }),
-              ...(body.goal === undefined ? {} : { goal: body.goal }),
-              ...(runtimePath === undefined ? {} : { runtimePath }),
-            });
-            session = { ...session, insight, brief };
-            await persistWorkflow();
-            json(response, 200, session);
-            return;
-          }
-
-          if (request.method === "POST" && url.pathname === "/__analysis/treatment") {
-            if (session.brief === undefined) throw new Error("请先生成 Brief");
-            const runtimePath = await resolveRuntime();
-            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
-            const treatment = await generateTreatment({
-              session,
-              insight,
-              brief: session.brief,
-              ...(runtimePath === undefined ? {} : { runtimePath }),
-            });
-            session = { ...session, insight, treatment };
-            await persistWorkflow();
-            json(response, 200, session);
-            return;
-          }
-
-          if (request.method === "POST" && url.pathname === "/__analysis/scaffold") {
-            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as {
-              speechMode?: "reference" | "tts";
-              formatId?: string;
-            };
-            const runtimePath = await resolveRuntime();
-            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
-            const brief = session.brief ?? await generateBrief({ session, insight, ...(runtimePath === undefined ? {} : { runtimePath }) });
-            const treatment = session.treatment ?? await generateTreatment({
-              session,
-              insight,
-              brief,
-              ...(runtimePath === undefined ? {} : { runtimePath }),
-            });
-            const scaffold = await scaffoldProject({
-              session,
-              insight,
-              brief,
-              treatment,
-              distributionRoot,
-              ...(body.formatId === undefined ? {} : { formatId: body.formatId }),
-              ...(runtimePath === undefined ? {} : { runtimePath }),
-              ...(body.speechMode === undefined ? {} : { speechMode: body.speechMode }),
-              ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
-              ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
-              ...(session.adaptationGoal === undefined ? {} : { goal: session.adaptationGoal }),
-              ...(session.adaptation === undefined ? {} : { preparedAdaptation: session.adaptation }),
-            });
-            session = { ...session, insight, brief, treatment, scaffold };
-            await persistWorkflow();
-            json(response, 200, session);
             return;
           }
 
@@ -901,17 +792,6 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                 workflowRunning = false;
               }
             })();
-            return;
-          }
-
-          if (request.method === "POST" && url.pathname === "/__analysis/reference-archive") {
-            const analysisPath = session.analysisPath;
-            if (analysisPath === undefined) throw new Error("请先完成媒体分析");
-            const archive = await writeReferenceArchive(session);
-            session = { ...session, referenceArchive: archive };
-            const raw = JSON.parse(await readFile(analysisPath, "utf8")) as Record<string, unknown>;
-            await writeFile(analysisPath, `${JSON.stringify({ ...raw, referenceArchive: archive }, null, 2)}\n`, "utf8");
-            json(response, 200, session);
             return;
           }
 
@@ -1009,15 +889,6 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               response.setHeader("content-disposition", `attachment; filename="${basename(videoPath)}"`);
             }
             createReadStream(videoPath).pipe(response);
-            return;
-          }
-
-          if (request.method === "GET" && url.pathname === "/__analysis/restore") {
-            const saved = await loadSavedAnalysis(options.workspaceRoot);
-            const runtimePath = await resolveRuntime();
-            if (saved !== undefined) session = { ...saved, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
-            session = await mergeWorkflow(session);
-            json(response, 200, session);
             return;
           }
 

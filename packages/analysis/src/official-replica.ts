@@ -210,7 +210,7 @@ export async function buildOfficialPathReport(input: {
     ok: hasReference,
     detail: hasReference
       ? (input.session.productReferenceName ?? "已上传")
-      : "请在「生成」页上传产品/人物参考图",
+      : "请在「素材」上传产品/人物参考图",
   });
 
   const review = input.session.directorReview;

@@ -136,8 +136,6 @@ export type BuildJobView = {
   readonly status: "idle" | "planning" | "building" | "complete" | "error";
   readonly phase?: string;
   readonly error?: string;
-  readonly planSummary?: string;
-  readonly pricingSummary?: string;
   readonly outputVideoPath?: string;
 };
 

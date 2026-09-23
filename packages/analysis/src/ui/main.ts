@@ -653,13 +653,37 @@ function renderPlan(): HTMLElement {
   return wrap;
 }
 
+function workPanel(title: string, body: HTMLElement, hint?: string): HTMLElement {
+  const panel = el("section", "work-panel");
+  const head = el("div", "work-panel-head");
+  head.append(el("h3", undefined, title));
+  if (hint !== undefined) head.append(el("p", undefined, hint));
+  const content = el("div", "work-panel-body");
+  content.append(body);
+  panel.append(head, content);
+  return panel;
+}
+
 function renderAssets(): HTMLElement {
   const wrap = el("div", "tab-stack");
   if (!session.analysisPath) {
     wrap.append(el("div", "card", "请先完成媒体分析，再上传参考图并完成导演审查。"));
     return wrap;
   }
-  wrap.append(renderGenerationInputs());
+  const review = session.directorReview;
+  const adapt = session.adaptation;
+  wrap.append(workPanel("产品图", renderReferenceField(), session.productReferencePath === undefined ? "未上传" : "已上传"));
+  wrap.append(workPanel(
+    "导演审查",
+    renderDirectorReviewField(),
+    review?.status === "approved" ? "已通过" : "待审查",
+  ));
+  wrap.append(workPanel(
+    "口播",
+    renderAdaptationField(),
+    adapt?.status === "complete" ? "已就绪" : adapt?.status === "running" ? "制作中" : "未完成",
+  ));
+  wrap.append(workPanel("改编说明", renderNotesField(), "用来改写口播"));
   return wrap;
 }
 
@@ -678,8 +702,7 @@ function renderInsightNextSteps(): HTMLElement {
     "到「素材」上传参考图（产品/人物）",
     "在 Cursor 中让 Agent 完成导演审查（编辑 .hypit/analysis/director/）",
     "点击「导演审查通过」后试听配音并确认口播",
-    "到「生成」通过官方路径检查后点击「一键复刻」",
-    "确认 Plan/Pricing 后点击「开始生成视频」",
+    "到「生成」一键复刻，再开始生成视频",
   ]) {
     const li = document.createElement("li");
     li.textContent = text;
@@ -777,43 +800,42 @@ function renderTranscript(): HTMLElement {
 }
 
 function renderReferenceField(): HTMLElement {
-  const referenceField = el("div", "field");
-  const referenceInput = document.createElement("input");
-  referenceInput.type = "file";
-  referenceInput.accept = ".jpg,.jpeg,.png,.webp,.gif,.avif,image/jpeg,image/png,image/webp,image/gif,image/avif";
-  referenceInput.disabled = referenceUploading;
-  referenceInput.addEventListener("change", () => {
-    const file = referenceInput.files?.[0];
-    if (file !== undefined) void uploadReferenceFile(file, referenceInput);
-  });
-  referenceField.append(el("label", undefined, "参考图（产品/人物，必填）"), referenceInput);
+  const row = el("div", "asset-row");
+  const frame = el("div", "media-frame");
+  const previewUrl = session.productReferencePath === undefined ? undefined : mediaUrl(session.productReferencePath);
+  if (previewUrl !== undefined) {
+    const preview = document.createElement("img");
+    preview.src = previewUrl;
+    preview.alt = session.productReferenceName ?? "产品图";
+    frame.append(preview);
+  } else {
+    frame.append(el("span", "media-frame-empty", "未上传"));
+  }
+  const copy = el("div", "asset-copy");
   if (referenceUploading) {
-    referenceField.append(el("div", "status running", "上传中…"));
+    copy.append(el("div", "status running", "上传中…"));
   } else if (referenceUploadError !== undefined) {
-    referenceField.append(el("div", "status error", referenceUploadError));
+    copy.append(el("div", "status error", referenceUploadError));
   }
   if (session.productReferencePath !== undefined) {
-    const previewUrl = mediaUrl(session.productReferencePath);
-    if (previewUrl !== undefined) {
-      const preview = document.createElement("img");
-      preview.className = "reference-preview";
-      preview.src = previewUrl;
-      preview.alt = session.productReferenceName ?? "参考图";
-      referenceField.append(preview);
-    }
-    referenceField.append(el("p", "uploaded-name", `已上传：${session.productReferenceName ?? "参考图"}`));
+    const name = el("strong", undefined, session.productReferenceName ?? "产品图");
+    name.title = session.productReferenceName ?? "";
+    copy.append(name, el("p", undefined, "jpg、png、webp、gif、avif"));
   } else {
-    referenceField.append(el("p", undefined, "生成视频必须提供参考图与改编配音音频给模型。支持 jpg、png、webp、gif、avif。"));
+    copy.append(el("strong", undefined, "还没有产品图"), el("p", undefined, "口播画面需要一张产品或人物图。"));
   }
-  if (session.productReferencePath !== undefined && session.analysisPath === undefined) {
-    referenceField.append(el("p", undefined, "完成参考视频分析后，将创建导演审查任务（不再自动制作配音）。"));
-  }
-  return referenceField;
+  copy.append(filePick({
+    accept: ".jpg,.jpeg,.png,.webp,.gif,.avif,image/jpeg,image/png,image/webp,image/gif,image/avif",
+    label: referenceUploading ? "上传中…" : session.productReferencePath === undefined ? "选择图片" : "更换图片",
+    disabled: referenceUploading,
+    onFile: (file) => { void uploadReferenceFile(file); },
+  }));
+  row.append(frame, copy);
+  return row;
 }
 
 function renderDirectorReviewField(): HTMLElement {
   const field = el("div", "field");
-  field.append(el("label", undefined, "导演审查（Cursor 对话，必填）"));
   if (session.productReferencePath === undefined || session.analysisPath === undefined) {
     field.append(el("p", undefined, "上传参考图并完成分析后，将生成 .hypit/analysis/director/ 审查稿。"));
     return field;
@@ -843,8 +865,7 @@ function renderDirectorReviewField(): HTMLElement {
 }
 
 function renderAdaptationField(): HTMLElement {
-  const adaptField = el("div", "field");
-  adaptField.append(el("label", undefined, "改编配音（必填）"));
+  const adaptField = el("div", "voice-stack");
   if (session.productReferencePath === undefined) {
     adaptField.append(el("p", undefined, "请先上传参考图并完成导演审查。"));
   } else {
@@ -852,11 +873,14 @@ function renderAdaptationField(): HTMLElement {
     if (adapt?.status === "running") {
       adaptField.append(el("div", "status running", adapt.phase ?? "制作配音中…"));
     } else if (adapt?.status === "complete" && adapt.generatedSpeechPath !== undefined) {
-      adaptField.append(el("div", "status success", adapt.phase ?? "配音已就绪"));
       const audioUrl = mediaUrl(adapt.generatedSpeechPath);
       const audioPreview = renderMediaPreview(audioUrl, "audio");
-      if (audioPreview !== undefined) adaptField.append(audioPreview);
-      const audioActions = el("div", "result-actions");
+      if (audioPreview !== undefined) {
+        const well = el("div", "audio-well");
+        well.append(audioPreview);
+        adaptField.append(well);
+      }
+      const audioActions = el("div", "panel-actions");
       const preview = el("button", "btn", "新窗口试听");
       preview.addEventListener("click", () => {
         window.open(audioUrl, "_blank");
@@ -869,8 +893,8 @@ function renderAdaptationField(): HTMLElement {
       retry.addEventListener("click", () => void prepareAdaptation());
       audioActions.append(preview, download, retry);
       adaptField.append(audioActions);
-      const scriptCard = el("div", "adapted-script");
-      scriptCard.append(el("strong", undefined, "改编口播"));
+      const scriptCard = el("div", "script-well");
+      scriptCard.append(el("strong", undefined, "口播文案"));
       const scenesPath = adapt.adaptedScenesPath;
       if (scenesPath === undefined) {
         scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
@@ -879,17 +903,17 @@ function renderAdaptationField(): HTMLElement {
         if (script === undefined) {
           scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
         } else {
-          scriptCard.append(el("pre", "doc-preview adapted-script-text", script));
+          scriptCard.append(el("pre", "script-text", script));
         }
       } else {
         scriptCard.append(el("p", "adapted-script-loading", "加载口播文案…"));
         void loadAdaptedScript(scenesPath).then((script) => {
           if (!scriptCard.isConnected) return;
-          scriptCard.replaceChildren(el("strong", undefined, "改编口播"));
+          scriptCard.replaceChildren(el("strong", undefined, "口播文案"));
           if (script === undefined) {
             scriptCard.append(el("p", undefined, "口播文案暂不可用。"));
           } else {
-            scriptCard.append(el("pre", "doc-preview adapted-script-text", script));
+            scriptCard.append(el("pre", "script-text", script));
           }
         });
       }
@@ -972,15 +996,10 @@ async function refreshOfficialPathChecks(forBuild = false): Promise<void> {
   }
 }
 
-function renderGenerationInputs(): HTMLElement {
-  const section = el("div", "card");
-  section.append(el("h4", undefined, "参考图、导演审查与改编配音"));
-  section.append(renderReferenceField(), renderDirectorReviewField(), renderAdaptationField());
-
-  const notesField = el("div", "field");
+function renderNotesField(): HTMLElement {
   const notesInput = document.createElement("textarea");
-  notesInput.rows = 2;
-  notesInput.placeholder = "改编说明：你的产品名称、核心卖点、目标人群（将按爆款结构改写口播）";
+  notesInput.rows = 3;
+  notesInput.placeholder = "产品名称、核心卖点、目标人群";
   notesInput.value = replicateNotes;
   notesInput.addEventListener("input", () => {
     replicateNotes = notesInput.value;
@@ -988,16 +1007,7 @@ function renderGenerationInputs(): HTMLElement {
   notesInput.addEventListener("blur", () => {
     void persistAdaptationGoal(replicateNotes);
   });
-  notesField.append(el("label", undefined, "改编说明"), notesInput);
-  section.append(notesField);
-
-  const stackField = el("div", "field");
-  stackField.append(
-    el("label", undefined, "官方模型栈"),
-    el("p", undefined, "TTS 试听/音色样本 → H3 A-roll 口播成片（h3-ugc-replica-v1 多 Take）→ gpt:Image B-roll"),
-  );
-  section.append(stackField);
-  return section;
+  return notesInput;
 }
 
 function renderCreateActionBar(): HTMLElement {
@@ -1061,14 +1071,13 @@ function renderCreate(): HTMLElement {
   }
 
   wrap.append(renderCreateActionBar());
-  wrap.append(renderGenerationInputs());
   wrap.append(renderOfficialPathChecklist());
 
   const card = el("div", "card");
   if (!session.scaffold) {
-    card.append(el("p", undefined, "参考图与改编配音就绪后，点击「一键复刻」生成工程与 Plan/Pricing，确认费用后再点「开始生成视频」。"));
+    card.append(el("p", undefined, "参考图、导演审查和改编配音在「素材」完成后，点「一键复刻」生成工程，再点「开始生成视频」。"));
     if (session.productReferencePath === undefined) {
-      card.append(el("p", undefined, "请先上传「参考图（产品/人物）」。"));
+      card.append(el("p", undefined, "请先到「素材」上传参考图。"));
     } else {
       const adapt = session.adaptation;
       if (adapt?.status === "complete") {
@@ -1076,7 +1085,7 @@ function renderCreate(): HTMLElement {
       } else if (adapt?.status === "running") {
         card.append(el("div", "status running", adapt.phase ?? "配音制作中，请稍候…"));
       } else {
-        card.append(el("p", undefined, "请先完成「改编配音」，再点击一键复刻。"));
+        card.append(el("p", undefined, "请先到「素材」完成改编配音，再点击一键复刻。"));
       }
     }
     wrap.append(card);
@@ -1099,16 +1108,6 @@ function renderCreate(): HTMLElement {
     card.append(el("p", "build-meta", `校验：${session.scaffold.checkSummary.split("\n")[0]}`));
   }
   wrap.append(card);
-  if (session.build?.planSummary) {
-    const plan = el("div", "card");
-    plan.append(el("h4", undefined, "执行计划"), el("pre", "doc-preview", session.build.planSummary));
-    wrap.append(plan);
-  }
-  if (session.build?.pricingSummary) {
-    const pricing = el("div", "card");
-    pricing.append(el("h4", undefined, "费用估算"), el("pre", "doc-preview", session.build.pricingSummary));
-    wrap.append(pricing);
-  }
   if (session.build?.status === "planning" || session.build?.status === "building") {
     wrap.append(el("div", "status running", session.build.phase ?? "生成中…"));
     if (session.build.id !== undefined) {
@@ -1423,7 +1422,6 @@ async function startReplication(): Promise<void> {
         speechMode,
         videoAroll,
         formatId: "ugc",
-        autoBuild: false,
       }),
     }));
     setCreateActionPending("replicate", "请求已提交，正在生成工程…");

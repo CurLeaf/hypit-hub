@@ -546,7 +546,7 @@ export async function runFullReplication(input: {
 }): Promise<WorkflowState> {
   if (input.session.analysisPath === undefined) throw new Error("请先完成媒体分析");
   if (input.session.productReferencePath === undefined) {
-    throw new Error("生成视频需要参考图，请先在「生成」页上传「参考图（产品/人物）」");
+    throw new Error("生成视频需要参考图，请先在「素材」上传「参考图（产品/人物）」");
   }
   const productionDir = join(input.session.workspaceRoot, "productions", `replica-${Date.now()}`);
   await mkdir(productionDir, { recursive: true });
