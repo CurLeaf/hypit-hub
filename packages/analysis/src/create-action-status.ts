@@ -48,7 +48,7 @@ export function resolveCreateActionStatus(
   }
 
   if (session.build?.status === "complete" && session.build.outputVideoPath !== undefined) {
-    return { tone: "success", headline: "成片已生成，请切换到「成片」标签预览。" };
+    return { tone: "success", headline: "成片已生成，可在中间播放器预览，或点上方「参考片 / 成片」切换。" };
   }
 
   if (session.scaffold !== undefined) {

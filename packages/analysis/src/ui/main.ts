@@ -10,15 +10,14 @@ import type {
   AnalysisSessionView,
   OfficialPathCheckView,
 } from "../shared.js";
-import { formatTime } from "../shared.js";
 import { isCliCheckInvocationError } from "../scaffold-check.js";
 
-type TabId = "overview" | "timeline" | "insight" | "brief" | "transcript" | "create" | "result";
+type TabId = "insight" | "plan" | "assets" | "build";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 let config: AnalysisConfigView | undefined;
 let session: AnalysisSessionView = { workspaceRoot: "." };
-let activeTab: TabId = "overview";
+let activeTab: TabId = "insight";
 let currentTime = 0;
 let pollTimer: number | undefined;
 let completionNotice: string | undefined;
@@ -83,6 +82,38 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+function filePick(options: {
+  readonly accept: string;
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly onFile: (file: File) => void;
+}): HTMLElement {
+  const label = el("label", "file-pick");
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = options.accept;
+  input.disabled = options.disabled === true;
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file !== undefined) options.onFile(file);
+  });
+  label.append(input, el("span", "btn file-pick-btn", options.label));
+  return label;
+}
+
+function bindPlayerAspect(shell: HTMLElement, video: HTMLVideoElement): void {
+  const apply = (): void => {
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (width <= 0 || height <= 0) return;
+    shell.style.setProperty("--player-ar", `${width} / ${height}`);
+    shell.style.setProperty("--arw", String(width));
+    shell.style.setProperty("--arh", String(height));
+  };
+  video.addEventListener("loadedmetadata", apply);
+  if (video.readyState >= 1) apply();
+}
+
 function render(): void {
   app.replaceChildren();
   const root = el("div", "app");
@@ -102,7 +133,7 @@ function clearCreateActionPending(): void {
 }
 
 function focusCreateActionIfNeeded(): void {
-  if (activeTab !== "create") return;
+  if (activeTab !== "build") return;
   const anchor = document.querySelector<HTMLElement>(".create-action-bar");
   if (anchor === null) return;
   const shouldFocus = createTabFocus
@@ -128,13 +159,13 @@ function renderCompletionBanner(): HTMLElement {
   const actions = el("div", "completion-banner-actions");
   if (completionNoticeIsError) {
     const view = el("button", "btn", "查看详情");
-    view.addEventListener("click", () => { activeTab = "create"; render(); });
+    view.addEventListener("click", () => { activeTab = "build"; render(); });
     actions.append(view);
   } else {
     const hasOutput = session.build?.outputVideoPath !== undefined;
     const view = el("button", "btn", hasOutput ? "查看成片" : "查看配音");
     view.addEventListener("click", () => {
-      activeTab = hasOutput ? "result" : "create";
+      activeTab = hasOutput ? "build" : "assets";
       if (hasOutput) previewMode = "output";
       render();
     });
@@ -218,7 +249,7 @@ function showBuildFailure(detail: string): void {
   completionNotice = summarizeBuildFailure(detail);
   completionNoticeDetail = detail;
   completionNoticeIsError = true;
-  activeTab = "create";
+  activeTab = "build";
 }
 
 function analysisSummary(session: AnalysisSessionView): string {
@@ -272,18 +303,18 @@ function applySessionUpdate(next: AnalysisSessionView): boolean {
   const wasAdapting = session.adaptation?.status === "running";
   const adaptDone = wasAdapting && next.adaptation?.status === "complete" && next.adaptation.generatedSpeechPath !== undefined;
   if (adaptDone) {
-    completionNotice = "改编配音已就绪！请在下方试听并确认口播内容，无误后再点击「一键复刻」。";
+    completionNotice = "改编配音已就绪！请在「素材」试听并确认口播，无误后到「生成」点击「一键复刻」。";
     completionNoticeDetail = undefined;
     completionNoticeIsError = false;
-    activeTab = "create";
+    activeTab = "assets";
   }
   const wasReplicating = session.workflowJob?.status === "running";
   const replicateDone = next.workflowJob?.status === "complete" && next.build?.status === "complete";
   if (wasReplicating && replicateDone) {
-    completionNotice = "复刻完成！可在「成片」标签预览生成的视频。";
+    completionNotice = "复刻完成！中间播放器已切到成片。";
     completionNoticeDetail = undefined;
     completionNoticeIsError = false;
-    activeTab = "result";
+    activeTab = "build";
     previewMode = "output";
   }
   const buildNowActive = next.build?.status === "building" || next.build?.status === "planning";
@@ -300,10 +331,10 @@ function applySessionUpdate(next: AnalysisSessionView): boolean {
     showBuildFailure(detail);
   }
   if (next.build?.status === "complete" && next.build.outputVideoPath !== undefined) {
-    completionNotice = "复刻完成！可在「成片」标签预览生成的视频。";
+    completionNotice = "复刻完成！中间播放器已切到成片。";
     completionNoticeDetail = undefined;
     completionNoticeIsError = false;
-    activeTab = "result";
+    activeTab = "build";
     previewMode = "output";
   }
   if (isSessionBusy(next)) {
@@ -312,7 +343,7 @@ function applySessionUpdate(next: AnalysisSessionView): boolean {
   session = next;
   const forBuild = Boolean(next.scaffold);
   const nextReadinessKey = readinessKey(session, forBuild);
-  if ((activeTab === "create" || next.productReferencePath !== undefined) && nextReadinessKey !== prevReadinessKey) {
+  if ((activeTab === "build" || next.productReferencePath !== undefined) && nextReadinessKey !== prevReadinessKey) {
     invalidateOfficialPathChecks();
     void refreshOfficialPathChecks(forBuild);
   }
@@ -347,19 +378,14 @@ function renderLayout(): HTMLElement {
 
 function renderSidebar(): HTMLElement {
   const sidebar = el("aside", "sidebar");
-  sidebar.append(el("div", "panel-title", "官方复刻流程"));
+  sidebar.append(el("div", "panel-title", "完整工作流"));
 
   const analysisComplete = session.analysisPath !== undefined;
   const stepData = [
-    { title: "1. 参考片分析", detail: "转写、切镜检测、深读归档", done: analysisComplete },
-    { title: "2. 爆款解读", detail: "Insight（分析时自动生成）", done: session.insight !== undefined },
-    { title: "3. 导演审查", detail: "在 Cursor 中让 Agent 审 BRIEF / 口播 / 切点", done: session.directorReview?.status === "approved" },
-    { title: "4. 参考图与改编配音", detail: "产品图 + TTS 试听/音色样本（成片口播由 H3 生成）", done: session.productReferencePath !== undefined && session.adaptation?.status === "complete" },
-    { title: "5. Brief / Treatment", detail: "导演稿或改编时生成", done: session.brief !== undefined && session.treatment !== undefined },
-    { title: "6. 生成工程", detail: "一键复刻 → SVML + hypit check", done: session.scaffold !== undefined },
-    { title: "7. Plan / Pricing", detail: "确认费用范围", done: session.build?.planSummary !== undefined },
-    { title: "8. 生成视频", detail: "hypit build", done: session.build?.status === "complete" },
-    { title: "9. 预览成片", detail: "对比参考片与输出", done: session.build?.outputVideoPath !== undefined },
+    { title: "参考片", detail: "导入并分析", done: analysisComplete },
+    { title: "素材与审查", detail: "参考图、导演审查、改编配音", done: session.productReferencePath !== undefined && session.directorReview?.status === "approved" && session.adaptation?.status === "complete" },
+    { title: "复刻工程", detail: "一键生成方案与脚手架", done: session.scaffold !== undefined },
+    { title: "生成成片", detail: "提交生成并预览", done: session.build?.outputVideoPath !== undefined },
   ];
   const steps = el("div", "step-list");
   const currentIndex = stepData.findIndex((s) => !s.done);
@@ -389,14 +415,15 @@ function renderSidebar(): HTMLElement {
   sidebar.append(defaultField);
 
   const uploadField = el("div", "field");
-  const fileInput = document.createElement("input");
-  fileInput.type = "file";
-  fileInput.accept = "video/*,audio/*";
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files?.[0];
-    if (file !== undefined) void uploadFile(file);
-  });
-  uploadField.append(el("label", undefined, "上传文件"), fileInput);
+  uploadField.append(
+    el("label", undefined, "上传文件"),
+    filePick({
+      accept: "video/*,audio/*",
+      label: session.videoName === undefined ? "选择视频文件" : "更换视频",
+      disabled: session.job?.status === "running",
+      onFile: (file) => { void uploadFile(file); },
+    }),
+  );
   if (session.videoName !== undefined) {
     uploadField.append(el("p", "uploaded-name", `已导入：${session.videoName}`));
   }
@@ -415,33 +442,36 @@ function renderSidebar(): HTMLElement {
   }
   langSelect.value = config?.defaultLanguage ?? "zh";
   langField.append(el("label", undefined, "对白语言"), langSelect);
-  sidebar.append(langField);
+  const controls = el("div", "sidebar-controls");
+  controls.append(langField);
+  sidebar.append(controls);
 
+  const statusHost = el("div", "sidebar-status");
   if (session.job?.status === "running") {
-    sidebar.append(el("div", "status running", session.job.phase ?? "分析中…"));
+    statusHost.append(el("div", "status running", session.job.phase ?? "分析中…"));
   } else if (session.workflowJob?.status === "running") {
-    sidebar.append(el("div", "status running", session.workflowJob.phase ?? "复刻中…"));
+    statusHost.append(el("div", "status running", session.workflowJob.phase ?? "复刻中…"));
   } else if (session.job?.status === "error" && session.job.error) {
-    sidebar.append(el("div", "status error", session.job.error));
+    statusHost.append(el("div", "status error", session.job.error));
   } else if (session.build?.status === "error") {
     const detail = sessionBuildFailureDetail(session);
     if (detail !== undefined) {
-      sidebar.append(el("div", "status error", summarizeBuildFailure(detail)));
+      statusHost.append(el("div", "status error", summarizeBuildFailure(detail)));
     }
   } else if (session.workflowJob?.status === "error" && session.workflowJob.error) {
-    sidebar.append(el("div", "status error", summarizeBuildFailure(session.workflowJob.error)));
+    statusHost.append(el("div", "status error", summarizeBuildFailure(session.workflowJob.error)));
   } else if (session.build?.outputVideoPath) {
-    sidebar.append(el("div", "status success", "复刻完成，可预览成片"));
+    statusHost.append(el("div", "status success", "复刻完成，可预览成片"));
   } else if (analysisComplete) {
-    sidebar.append(el("div", "status success", `分析完成 · ${analysisSummary(session)}`));
+    statusHost.append(el("div", "status success", `分析完成 · ${analysisSummary(session)}`));
   }
-
   if (config?.hasChatApiKey === false) {
-    sidebar.append(el("div", "status error", "未配置 OPENAI_API_KEY：官方路径需要 LLM 撰写 Insight / Brief / Treatment / 口播改写。"));
+    statusHost.append(el("div", "status error", "未配置 OPENAI_API_KEY：官方路径需要 LLM 撰写 Insight / Brief / Treatment / 口播改写。"));
   }
   if (config?.hasH3ApiKey === false) {
-    sidebar.append(el("div", "status error", "未配置 H3_VIDEO_API_KEY：官方路径需要 MiniMax H3 生成 A-roll 口播。"));
+    statusHost.append(el("div", "status error", "未配置 H3_VIDEO_API_KEY：官方路径需要 MiniMax H3 生成 A-roll 口播。"));
   }
+  if (statusHost.childElementCount > 0) sidebar.append(statusHost);
 
   return sidebar;
 }
@@ -449,6 +479,7 @@ function renderSidebar(): HTMLElement {
 function renderCenter(): HTMLElement {
   const center = el("section", "center");
   const playerWrap = el("div", "player-wrap");
+  const stage = el("div", "player-stage");
   const shell = el("div", "player-shell");
 
   const hasOutput = session.build?.outputVideoPath !== undefined;
@@ -483,12 +514,14 @@ function renderCenter(): HTMLElement {
       });
     }
     video.addEventListener("timeupdate", () => { currentTime = video.currentTime; highlightActiveWord(); });
+    bindPlayerAspect(shell, video);
     shell.append(video);
   }
-  playerWrap.append(shell);
+  stage.append(shell);
+  playerWrap.append(stage);
   center.append(playerWrap);
 
-  if (session.probe !== undefined) {
+  if (session.probe !== undefined && !showingOutput) {
     const meta = el("div", "center-meta");
     for (const item of [
       { label: "时长", value: `${session.probe.duration}s` },
@@ -503,86 +536,22 @@ function renderCenter(): HTMLElement {
     center.append(meta);
   }
 
-  const timeline = renderCompactTimeline(session.probe?.duration ?? 0);
-  if (timeline !== undefined) center.append(timeline);
-
-  const duration = session.probe?.duration ?? 0;
-  const transport = el("div", "transport");
-  const slider = document.createElement("input");
-  slider.type = "range";
-  slider.min = "0";
-  slider.max = String(Math.max(duration, 0.001));
-  slider.step = "0.01";
-  slider.value = String(currentTime);
-  slider.addEventListener("input", () => {
-    currentTime = Number(slider.value);
-    const video = shell.querySelector("video");
-    if (video !== null) video.currentTime = currentTime;
-    highlightActiveWord();
-  });
-  transport.append(el("span", "timecode", `${formatTime(currentTime)} / ${formatTime(duration)}`), slider);
-  center.append(transport);
   return center;
-}
-
-function renderCompactTimeline(duration: number): HTMLElement | undefined {
-  if (duration <= 0) return undefined;
-  const hasSegments = (session.segments?.length ?? 0) > 0;
-  const hasCuts = (session.boundaries?.length ?? 0) > 0;
-  if (!hasSegments && !hasCuts) return undefined;
-  return renderTimeline(duration);
-}
-
-function renderTimeline(duration: number): HTMLElement {
-  const timeline = el("section", "timeline");
-  timeline.append(el("h3", undefined, "语义与画面时间轴"));
-  const body = el("div", "timeline-body");
-  if (duration <= 0) {
-    body.append(el("p", undefined, "导入视频后显示时间轴"));
-    timeline.append(body);
-    return timeline;
-  }
-  const segmentLane = el("div", "lane");
-  segmentLane.append(el("span", "lane-label", "口播文案"));
-  for (const segment of session.segments ?? []) {
-    const marker = el("button", "marker segment", segment.label);
-    marker.style.left = `${(segment.start / duration) * 100}%`;
-    marker.style.width = `${Math.max(2, ((segment.end - segment.start) / duration) * 100)}%`;
-    marker.title = segment.text;
-    marker.addEventListener("click", () => seekTo(segment.start));
-    segmentLane.append(marker);
-  }
-  body.append(segmentLane);
-  const cutLane = el("div", "lane");
-  cutLane.append(el("span", "lane-label", "画面变化"));
-  for (const boundary of session.boundaries ?? []) {
-    const marker = el("button", "marker cut");
-    marker.style.left = `${(boundary.at / duration) * 100}%`;
-    marker.title = `${formatTime(boundary.at)} · ${boundary.score}`;
-    marker.addEventListener("click", () => seekTo(boundary.at));
-    cutLane.append(marker);
-  }
-  body.append(cutLane);
-  timeline.append(body);
-  return timeline;
 }
 
 function renderInspector(): HTMLElement {
   const inspector = el("aside", "inspector");
   const tabs = el("div", "tabs");
   const tabItems: { id: TabId; label: string }[] = [
-    { id: "overview", label: "概览" },
-    { id: "timeline", label: "深读归档" },
-    { id: "insight", label: "爆款解读" },
-    { id: "brief", label: "Brief / Treatment" },
-    { id: "transcript", label: "转写" },
-    { id: "create", label: "复刻" },
-    { id: "result", label: "成片" },
+    { id: "insight", label: "解读" },
+    { id: "plan", label: "方案" },
+    { id: "assets", label: "素材" },
+    { id: "build", label: "生成" },
   ];
   for (const tab of tabItems) {
     const button = el("button", `tab${activeTab === tab.id ? " active" : ""}`, tab.label);
     button.addEventListener("click", () => {
-      if (tab.id === "create") createTabFocus = true;
+      if (tab.id === "build") createTabFocus = true;
       activeTab = tab.id;
       render();
     });
@@ -591,13 +560,10 @@ function renderInspector(): HTMLElement {
   inspector.append(tabs);
   const panel = el("div", "tab-panel");
   const renders: Record<TabId, () => HTMLElement> = {
-    overview: renderOverview,
-    timeline: renderTimelineDoc,
     insight: renderInsight,
-    brief: renderBrief,
-    transcript: renderTranscript,
-    create: renderCreate,
-    result: renderResult,
+    plan: renderPlan,
+    assets: renderAssets,
+    build: renderBuildTab,
   };
   panel.append(renders[activeTab]());
   inspector.append(panel);
@@ -681,39 +647,26 @@ function renderTimelineDoc(): HTMLElement {
   return wrap;
 }
 
-function renderOverview(): HTMLElement {
-  const wrap = el("div");
-  if (!session.probe) { wrap.append(el("div", "card", "尚未导入视频。")); return wrap; }
-  if (session.analysisPath) {
-    const card = el("div", "card card-highlight");
-    card.append(el("h4", undefined, "参考片分析已完成"), el("p", undefined, analysisSummary(session)));
-    const actions = el("div", "result-actions");
-    const insightBtn = el("button", "btn", "查看爆款解读");
-    insightBtn.addEventListener("click", () => { activeTab = "insight"; render(); });
-    const createBtn = el("button", "btn btn-primary", "前往复刻");
-    createBtn.addEventListener("click", () => { activeTab = "create"; render(); });
-    actions.append(insightBtn, createBtn);
-    card.append(actions);
-    wrap.append(card);
+function renderPlan(): HTMLElement {
+  const wrap = el("div", "tab-stack");
+  wrap.append(renderBrief(), renderTimelineDoc(), renderTranscript());
+  return wrap;
+}
+
+function renderAssets(): HTMLElement {
+  const wrap = el("div", "tab-stack");
+  if (!session.analysisPath) {
+    wrap.append(el("div", "card", "请先完成媒体分析，再上传参考图并完成导演审查。"));
+    return wrap;
   }
-  const grid = el("div", "meta-grid");
-  for (const item of [
-    { label: "时长", value: `${session.probe.duration}s` },
-    { label: "画幅", value: `${session.probe.width}×${session.probe.height}` },
-    { label: "帧率", value: session.probe.frameRate > 0 ? `${session.probe.frameRate} fps` : "静态" },
-    { label: "音频", value: session.probe.hasAudio ? "有" : "无" },
-  ]) {
-    const card = el("div", "meta-item");
-    card.append(el("strong", undefined, item.value), el("span", undefined, item.label));
-    grid.append(card);
-  }
-  wrap.append(grid);
-  if (session.tilePath) {
-    const img = document.createElement("img");
-    img.className = "tile-preview";
-    img.src = mediaUrl(session.tilePath) ?? "";
-    wrap.append(el("div", "panel-title", "画面抽样"), img);
-  }
+  wrap.append(renderGenerationInputs());
+  return wrap;
+}
+
+function renderBuildTab(): HTMLElement {
+  const wrap = el("div", "tab-stack");
+  wrap.append(renderCreate());
+  if (session.build?.outputVideoPath !== undefined) wrap.append(renderResult());
   return wrap;
 }
 
@@ -722,10 +675,10 @@ function renderInsightNextSteps(): HTMLElement {
   card.append(el("h4", undefined, "下一步"));
   const steps = document.createElement("ol");
   for (const text of [
-    "到「复刻」页上传参考图（产品/人物）",
+    "到「素材」上传参考图（产品/人物）",
     "在 Cursor 中让 Agent 完成导演审查（编辑 .hypit/analysis/director/）",
-    "Analysis 点击「导演审查通过」后试听配音并确认口播",
-    "通过官方路径检查后点击「一键复刻」",
+    "点击「导演审查通过」后试听配音并确认口播",
+    "到「生成」通过官方路径检查后点击「一键复刻」",
     "确认 Plan/Pricing 后点击「开始生成视频」",
   ]) {
     const li = document.createElement("li");
@@ -786,7 +739,7 @@ function renderBrief(): HTMLElement {
   const wrap = el("div");
   if (!session.brief) {
     const card = el("div", "card");
-    card.append(el("p", undefined, "官方流程会在「改编配音」阶段自动生成 Brief 与 Treatment。请先在「复刻」页上传参考图并完成配音制作。"));
+    card.append(el("p", undefined, "官方流程会在「改编配音」阶段自动生成 Brief 与 Treatment。请先在「素材」上传参考图并完成配音制作。"));
     wrap.append(card);
     return wrap;
   }
@@ -1012,7 +965,7 @@ async function refreshOfficialPathChecks(forBuild = false): Promise<void> {
     officialPathReady = readiness.ok;
     lastReadinessKey = key;
     const after = JSON.stringify({ checks: officialPathChecks, ready: officialPathReady });
-    if (activeTab === "create" && before !== after) render();
+    if (activeTab === "build" && before !== after) render();
   } catch {
     if (token !== readinessRefreshToken) return;
     invalidateOfficialPathChecks();
@@ -1249,11 +1202,11 @@ async function bootstrap(): Promise<void> {
   }
   if (session.build?.outputVideoPath) {
     previewMode = "output";
-    activeTab = "result";
+    activeTab = "build";
   } else if (session.build?.status === "error") {
     const detail = sessionBuildFailureDetail(session);
     if (detail !== undefined) showBuildFailure(detail);
-    activeTab = "create";
+    activeTab = "build";
   }
   render();
   void refreshOfficialPathChecks(Boolean(session.scaffold));
@@ -1364,7 +1317,7 @@ async function ensureReplicationReady(forBuild = false): Promise<boolean> {
     if (!readiness.ok) {
       clearCreateActionPending();
       showBuildFailure(readiness.issues.join("\n"));
-      activeTab = "create";
+      activeTab = "build";
       render();
       return false;
     }
@@ -1374,7 +1327,7 @@ async function ensureReplicationReady(forBuild = false): Promise<boolean> {
     clearCreateActionPending();
     const detail = error instanceof Error ? error.message : String(error);
     showBuildFailure(detail);
-    activeTab = "create";
+    activeTab = "build";
     render();
     return false;
   }
@@ -1400,7 +1353,7 @@ async function uploadReferenceFile(file: File, input?: HTMLInputElement): Promis
 }
 
 async function runBuild(): Promise<void> {
-  activeTab = "create";
+  activeTab = "build";
   clearCompletionNotice();
   const previousBuild = session.build;
   const previousJob = session.workflowJob;
@@ -1456,7 +1409,7 @@ async function startAnalysis(): Promise<void> {
 }
 
 async function startReplication(): Promise<void> {
-  activeTab = "create";
+  activeTab = "build";
   clearCompletionNotice();
   if (!(await ensureReplicationReady(false))) return;
   setCreateActionPending("replicate", "正在发送一键复刻请求…");
