@@ -2,7 +2,7 @@ import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { runCheck } from "./build-runner.js";
-import { markInsightComplete } from "./reference-archive.js";
+import { ensureReferenceArchiveOnDisk, syncInsightToReferenceArchive } from "./reference-archive.js";
 import { generateFormatReplicaProject } from "./scaffold-format.js";
 
 import type {
@@ -20,13 +20,19 @@ import {
 } from "./insight-builder.js";
 import { chatCompletion, extractJsonObject, loadChatGateway } from "./llm.js";
 import { assertOfficialLlmGateway, formatOfficialPathReport, validateOfficialSvml } from "./official-replica.js";
+import {
+  hasProductReference,
+  normalizeProductReferences,
+  productReferenceLabels,
+} from "./product-reference.js";
 import { normalizeTranscriptText } from "./transcript-text.js";
 
 const WORKFLOW_STATE = ".hypit/analysis/workflow.json";
 
 export type WorkflowState = Pick<AnalysisSessionView,
   "insight" | "brief" | "treatment" | "scaffold" | "build" | "adaptation" | "adaptationGoal"
-  | "productReferencePath" | "productReferenceName" | "videoAroll" | "directorReview"> & {
+  | "productReferencePath" | "productReferenceName" | "productReferencePaths" | "productReferenceNames"
+  | "videoAroll" | "targetDurationSeconds" | "directorReview" | "referenceArchive"> & {
   readonly videoPath?: string;
   readonly videoUrl?: string;
 };
@@ -47,19 +53,29 @@ export async function saveWorkflowState(workspaceRoot: string, state: WorkflowSt
 }
 
 export function workflowStateFromSession(session: AnalysisSessionView): WorkflowState {
+  const build = session.build === undefined
+    ? session.build
+    : (() => {
+      const { generatedVideos: _generatedVideos, generatedVideoCount: _generatedVideoCount, ...rest } = session.build;
+      return rest;
+    })();
   return {
     videoPath: session.videoPath,
     productReferencePath: session.productReferencePath,
     productReferenceName: session.productReferenceName,
+    productReferencePaths: session.productReferencePaths,
+    productReferenceNames: session.productReferenceNames,
     videoAroll: session.videoAroll,
+    targetDurationSeconds: session.targetDurationSeconds,
     insight: session.insight,
     brief: session.brief,
     treatment: session.treatment,
     scaffold: session.scaffold,
-    build: session.build,
+    build,
     adaptation: session.adaptation,
     adaptationGoal: session.adaptationGoal,
     directorReview: session.directorReview,
+    referenceArchive: session.referenceArchive,
   };
 }
 
@@ -126,8 +142,7 @@ async function persistInsight(
 
   const referenceDir = session.referenceArchive?.referenceDir;
   if (referenceDir !== undefined) {
-    await writeFile(join(referenceDir, "INSIGHT.md"), `${markdown}\n`, "utf8");
-    await markInsightComplete(referenceDir);
+    await syncInsightToReferenceArchive(referenceDir, markdown);
   }
 
   return { ...insight, path: jsonPath };
@@ -193,11 +208,19 @@ function primaryFormat(session: AnalysisSessionView): FormatSuggestionView | und
   return [...formats].sort((left, right) => rank[left.confidence] - rank[right.confidence])[0];
 }
 
+function captionSystemLine(session: AnalysisSessionView): string {
+  const h3BurnedCaptions = (session.videoAroll ?? true) && hasProductReference(session);
+  return h3BurnedCaptions
+    ? "短语级烧录字幕（由 H3 在画面内生成，与口播同步）"
+    : "词级高亮字幕（本地 caption-fine 叠加，跟随口播）";
+}
+
 function productReferenceBriefLine(session: AnalysisSessionView): string {
-  if (session.productReferencePath === undefined) return "";
-  const label = session.productReferenceName ?? "用户参考图";
+  const { names } = normalizeProductReferences(session);
+  if (names.length === 0) return "";
+  const label = productReferenceLabels(names);
   const mode = session.videoAroll ?? true
-    ? "A-roll 使用 `h3:ReferenceVideo`（MiniMax H3 生成口播成片；TTS 仅音色样本），B-roll 使用 `gpt:Image` 参考"
+    ? "A-roll 使用 `h3:ReferenceVideo`（MiniMax H3 生成口播与烧录字幕；TTS 仅音色样本），B-roll 使用 `gpt:Image` 参考"
     : "生成各分镜画面时作为 `gpt:Image` 参考输入；口播文案按爆款结构改写并用 TTS 配音";
   return "- 用户参考图：" + label + "（" + mode + "）";
 }
@@ -219,7 +242,7 @@ function faithfulBriefFromReference(session: AnalysisSessionView, insight: Viral
     "- 叙事结构：" + structure,
     "- Hook 设计：" + insight.hookAnalysis,
     "- 画幅与时长：" + (session.probe?.width ?? "?") + "×" + (session.probe?.height ?? "?") + "，约 " + (session.probe?.duration ?? "?") + "s",
-    "- 视听系统：口播节奏 + 画面变化点（" + (session.boundaries?.length ?? 0) + " 处）+ 词级字幕时机",
+    "- 视听系统：口播节奏 + 画面变化点（" + (session.boundaries?.length ?? 0) + " 处）+ " + captionSystemLine(session),
     ...(formatLine.length > 0 ? [formatLine] : []),
     ...(productReferenceBriefLine(session).length > 0 ? [productReferenceBriefLine(session)] : []),
     "",
@@ -324,7 +347,7 @@ export async function generateBrief(input: {
       const formatHint = format === undefined
         ? ""
         : "推断格式：" + format.title + "，理由：" + format.reason;
-      const hasProductAdaptation = input.session.productReferencePath !== undefined
+      const hasProductAdaptation = hasProductReference(input.session)
         || (input.goal?.trim().length ?? 0) > 0
         || (input.replacements?.trim().length ?? 0) > 0;
       markdown = await chatCompletion({
@@ -347,7 +370,7 @@ export async function generateBrief(input: {
           formats: input.session.formats,
           userGoal: input.goal,
           productReplacements: input.replacements,
-          productReference: input.session.productReferenceName,
+          productReference: productReferenceLabels(normalizeProductReferences(input.session).names),
         }, null, 2),
       });
     } catch (error) {
@@ -399,7 +422,7 @@ export async function generateTreatment(input: {
     "",
     "## 视听系统",
     "- A-roll：竖屏口播或 AI 生成画面",
-    "- 字幕：词级高亮，跟随口播",
+    "- 字幕：" + captionSystemLine(input.session),
     "- B-roll：在 Moment 处切换产品图/演示",
     "",
     "## CTA",
@@ -433,7 +456,7 @@ export async function scaffoldProject(input: {
   readonly distributionRoot: string;
   readonly runtimePath?: string;
   readonly speechMode?: "reference" | "tts";
-  readonly productReferencePath?: string;
+  readonly productReferencePaths?: readonly string[];
   readonly videoAroll?: boolean;
   readonly goal?: string;
   readonly preparedAdaptation?: AnalysisSessionView["adaptation"];
@@ -445,6 +468,7 @@ export async function scaffoldProject(input: {
     : resolve(input.brief.path, "..");
   await mkdir(productionDir, { recursive: true });
 
+  const productReferencePaths = input.productReferencePaths ?? normalizeProductReferences(input.session).paths;
   const preparedAdaptation = input.preparedAdaptation ?? input.session.adaptation;
   const { authorPath, runPath } = await generateFormatReplicaProject({
     session: input.session,
@@ -456,7 +480,7 @@ export async function scaffoldProject(input: {
     formatId,
     ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     ...(input.speechMode === undefined ? {} : { speechMode: input.speechMode }),
-    ...(input.productReferencePath === undefined ? {} : { productReferencePath: input.productReferencePath }),
+    ...(productReferencePaths.length === 0 ? {} : { productReferencePaths }),
     ...(input.videoAroll === undefined ? {} : { videoAroll: input.videoAroll }),
     brief: input.brief,
     ...(input.goal === undefined ? {} : { goal: input.goal }),
@@ -471,12 +495,12 @@ export async function scaffoldProject(input: {
     "",
     "完整示例参考：`" + (format?.example ?? "packages/analysis/templates/recipes.svs") + "`",
     "",
-    input.productReferencePath !== undefined
-      ? "本工程保留参考片结构与 Hook 节奏，口播文案已按用户参考图与改编说明改写；成片口播由 H3 生成，字幕对齐 H3 音轨（TTS 供审查与音色样本）。"
+    productReferencePaths.length > 0
+      ? "本工程保留参考片结构与 Hook 节奏，口播文案已按用户参考图与改编说明改写；成片口播与字幕均由 H3 在画面内生成（TTS 供审查与音色样本）。"
       : "本工程已根据参考片转写、切镜点与口播结构自动生成 Script、分镜图 prompt、卡拉 OK 字幕与音频对齐。",
-    ...(input.productReferencePath !== undefined
+    ...(productReferencePaths.length > 0
       ? ["", (input.videoAroll ?? input.session.videoAroll ?? true)
-        ? "A-roll：`h3:ReferenceVideo`（参考图 + 音色样本 + H3 口播成片）。B-roll：`gpt:Image` 参考图。"
+        ? "A-roll：`h3:ReferenceVideo`（参考图 + 音色样本 + H3 口播与烧录字幕）。B-roll：`gpt:Image` 参考图。"
         : "用户参考图已接入各分镜 `gpt:Image` 的 `<gpt:Reference>`，用于保持产品/人物外观一致。"]
       : []),
   ].join("\n"), "utf8");
@@ -487,10 +511,10 @@ export async function scaffoldProject(input: {
   const authorSvml = await readFile(authorPath, "utf8");
   const pipelineReport = validateOfficialSvml(authorSvml, {
     videoAroll: input.videoAroll ?? input.session.videoAroll ?? true,
-    requireProductReference: input.productReferencePath !== undefined,
+    requireProductReference: productReferencePaths.length > 0,
   });
   await writeFile(join(productionDir, "PIPELINE.md"), formatOfficialPathReport(pipelineReport), "utf8");
-  if (input.productReferencePath !== undefined && !pipelineReport.ok) {
+  if (productReferencePaths.length > 0 && !pipelineReport.ok) {
     throw new Error("工程未通过官方复刻路径校验：\n" + pipelineReport.checks.filter((c) => !c.ok).map((c) => `${c.label}：${c.detail}`).join("\n"));
   }
 
@@ -532,6 +556,12 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+function hasPersistedInsight(insight: ViralInsightView | undefined): insight is ViralInsightView {
+  return insight !== undefined
+    && typeof insight.summary === "string"
+    && insight.summary.trim().length > 0;
+}
+
 export async function runFullReplication(input: {
   readonly session: AnalysisSessionView;
   readonly runtimePath?: string;
@@ -540,26 +570,31 @@ export async function runFullReplication(input: {
   readonly goal?: string;
   readonly formatId?: string;
   readonly speechMode?: "reference" | "tts";
-  readonly productReferencePath?: string;
+  readonly productReferencePaths?: readonly string[];
   readonly videoAroll?: boolean;
   onPhase?(phase: string): void;
 }): Promise<WorkflowState> {
   if (input.session.analysisPath === undefined) throw new Error("请先完成媒体分析");
-  if (input.session.productReferencePath === undefined) {
+  const productReferencePaths = input.productReferencePaths ?? normalizeProductReferences(input.session).paths;
+  if (productReferencePaths.length === 0) {
     throw new Error("生成视频需要参考图，请先在「素材」上传「参考图（产品/人物）」");
   }
   const productionDir = join(input.session.workspaceRoot, "productions", `replica-${Date.now()}`);
   await mkdir(productionDir, { recursive: true });
+  input.onPhase?.("检查深读归档…");
+  const session = await ensureReferenceArchiveOnDisk(input.session);
   input.onPhase?.("解读爆款逻辑…");
-  const insight = await generateInsight({
-    session: input.session,
-    ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
-    ...(input.onPhase === undefined ? {} : { onPhase: input.onPhase }),
-    requireLlm: true,
-  });
+  const insight = hasPersistedInsight(session.insight)
+    ? session.insight
+    : await generateInsight({
+      session,
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
+      ...(input.onPhase === undefined ? {} : { onPhase: input.onPhase }),
+      requireLlm: true,
+    });
   input.onPhase?.("撰写 Brief…");
   const brief = await resolveWorkflowBrief({
-    session: input.session,
+    session,
     insight,
     productionDir,
     ...(input.replacements === undefined ? {} : { replacements: input.replacements }),
@@ -569,7 +604,7 @@ export async function runFullReplication(input: {
   });
   input.onPhase?.("撰写 Treatment…");
   const treatment = await resolveWorkflowTreatment({
-    session: input.session,
+    session,
     insight,
     brief,
     productionDir,
@@ -577,10 +612,9 @@ export async function runFullReplication(input: {
     requireLlm: true,
   });
   input.onPhase?.("生成工程文件…");
-  const productReferencePath = input.productReferencePath ?? input.session.productReferencePath;
   const videoAroll = input.videoAroll ?? input.session.videoAroll;
   const scaffold = await scaffoldProject({
-    session: input.session,
+    session,
     insight,
     brief,
     treatment,
@@ -588,10 +622,16 @@ export async function runFullReplication(input: {
     ...(input.formatId === undefined ? {} : { formatId: input.formatId }),
     ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     speechMode: "tts",
-    ...(productReferencePath === undefined ? {} : { productReferencePath }),
+    productReferencePaths,
     ...(videoAroll === undefined ? {} : { videoAroll }),
     ...(input.goal === undefined ? {} : { goal: input.goal }),
-    ...(input.session.adaptation === undefined ? {} : { preparedAdaptation: input.session.adaptation }),
+    ...(session.adaptation === undefined ? {} : { preparedAdaptation: session.adaptation }),
   });
-  return { insight, brief, treatment, scaffold };
+  return {
+    insight,
+    brief,
+    treatment,
+    scaffold,
+    ...(session.referenceArchive === undefined ? {} : { referenceArchive: session.referenceArchive }),
+  };
 }

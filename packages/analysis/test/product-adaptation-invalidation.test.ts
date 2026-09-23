@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   hasCommittedProductAdaptation,
+  shouldInvalidateForDurationChange,
   shouldInvalidateForGoalChange,
 } from "../src/product-adaptation-invalidation.js";
 import type { AnalysisSessionView } from "../src/shared.js";
@@ -43,6 +44,17 @@ test("shouldInvalidateForGoalChange invalidates after approval when goal changes
 test("shouldInvalidateForGoalChange ignores unchanged goal blur", () => {
   assert.equal(
     shouldInvalidateForGoalChange(session(), "旧产品说明", "旧产品说明"),
+    false,
+  );
+});
+
+test("shouldInvalidateForDurationChange invalidates after approval when duration changes", () => {
+  assert.equal(
+    shouldInvalidateForDurationChange(session(), 20, 45),
+    true,
+  );
+  assert.equal(
+    shouldInvalidateForDurationChange(session(), 20, 20),
     false,
   );
 });

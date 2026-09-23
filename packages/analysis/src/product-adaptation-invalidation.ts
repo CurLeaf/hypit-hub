@@ -1,3 +1,4 @@
+import { hasProductReference } from "./product-reference.js";
 import type { AnalysisSessionView } from "./shared.js";
 
 export function hasCommittedProductAdaptation(session: AnalysisSessionView): boolean {
@@ -11,8 +12,18 @@ export function shouldInvalidateForGoalChange(
   previousGoal: string,
   nextGoal: string,
 ): boolean {
-  if (previousGoal === nextGoal || session.productReferencePath === undefined) return false;
+  if (previousGoal === nextGoal || !hasProductReference(session)) return false;
   if (!hasCommittedProductAdaptation(session)) return false;
   const baselineGoal = session.directorReview?.adaptationGoal?.trim() ?? previousGoal;
   return baselineGoal !== nextGoal;
+}
+
+export function shouldInvalidateForDurationChange(
+  session: AnalysisSessionView,
+  previousDuration: number | undefined,
+  nextDuration: number | undefined,
+): boolean {
+  if (previousDuration === nextDuration || !hasProductReference(session)) return false;
+  if (!hasCommittedProductAdaptation(session)) return false;
+  return true;
 }

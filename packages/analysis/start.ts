@@ -17,6 +17,8 @@ export function writeAnalysisHelp(io: Pick<CliIo, "write">): void {
 
 打开命令打印的网址。上传、使用默认 origin 视频、或指定本地视频后，点击「开始分析」。
 分析结果保存在项目的 .hypit/analysis/ 目录（ANALYSIS.json、transcript.json、overview-tile.jpg）。
+在 Hypit 源码仓库中运行时，examples/ 与仓库根目录会自动重定向到 projects/<slug>/，
+避免把制作产物写入 examples/。
 
 需要 Runtime 已选择且 runtime up，才能转写对白（WhisperX）。
 画面探测与结构推断仅依赖本地 ffmpeg。
@@ -59,19 +61,19 @@ export async function runAnalysis(argv: readonly string[], io: Pick<CliIo, "writ
 
   const values = argumentsByName(argv[0] === "--" ? argv.slice(1) : argv);
   const invokedFrom = process.env.INIT_CWD ?? process.cwd();
-  const { resolveProjectRoot, findRuntimeProfile } = await import("@hypit/project-context-node");
+  const { resolveCreativeProjectRoot, findRuntimeProfile } = await import("@hypit/project-context-node");
   const workspaceArgument = values.get("workspace")?.at(-1);
   const requestedWorkspaceRoot = workspaceArgument === undefined
     ? undefined
     : resolve(invokedFrom, workspaceArgument);
-  const workspaceRoot = await resolveProjectRoot({
+  const distributionRoot = resolve(here, "../..");
+  const { projectRoot: workspaceRoot, redirectedFrom } = await resolveCreativeProjectRoot({
     ...(requestedWorkspaceRoot === undefined ? {} : { workspaceRoot: requestedWorkspaceRoot }),
     cwd: invokedFrom,
+    distributionRoot,
   });
-  const { loadWorkspaceEnv } = await import("./src/workspace-env.js");
-  const distributionRoot = resolve(here, "../..");
-  await loadWorkspaceEnv(distributionRoot);
-  await loadWorkspaceEnv(workspaceRoot);
+  const { loadHypitAnalysisEnv } = await import("./src/workspace-env.js");
+  await loadHypitAnalysisEnv(distributionRoot, workspaceRoot);
   const runtimeArgument = values.get("runtime")?.at(-1);
   const selectedRuntime = runtimeArgument === undefined ? await findRuntimeProfile(workspaceRoot) : undefined;
   const runtimePath = runtimeArgument === undefined ? selectedRuntime?.profile : resolve(invokedFrom, runtimeArgument);
@@ -92,6 +94,9 @@ export async function runAnalysis(argv: readonly string[], io: Pick<CliIo, "writ
   const sourceCheckout = existsSync(resolve(distributionRoot, "pnpm-workspace.yaml"));
   console.info([
     `  项目              ${workspaceRoot}`,
+    ...(redirectedFrom === undefined
+      ? []
+      : [`  工作区重定向      ${redirectedFrom} → ${workspaceRoot}（制作产物不会写入 examples/）`]),
     `  Runtime Profile   ${runtimePath ?? "未选择"}`,
     `  默认语言          ${language}`,
     ...(initialVideo === undefined ? [] : [`  初始视频          ${initialVideo}`]),

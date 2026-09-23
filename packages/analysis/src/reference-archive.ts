@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 
 import { tileFrames, tileSampleTimes } from "@hypit/video-cli";
@@ -77,6 +77,35 @@ export function buildProgressMarkdown(insightComplete = false): string {
     "- [ ] Agent 审片后修订 Treatment",
     "- [ ] Studio 微调组件参数",
   ].join("\n");
+}
+
+export async function syncInsightToReferenceArchive(referenceDir: string, markdown: string): Promise<void> {
+  await mkdir(referenceDir, { recursive: true });
+  await writeFile(join(referenceDir, "INSIGHT.md"), `${markdown}\n`, "utf8");
+  await markInsightComplete(referenceDir);
+}
+
+export async function ensureReferenceArchiveOnDisk(session: AnalysisSessionView): Promise<AnalysisSessionView> {
+  const referenceDir = session.referenceArchive?.referenceDir;
+  if (referenceDir !== undefined) {
+    try {
+      await access(join(referenceDir, "ANALYSIS.md"));
+      return session;
+    } catch {
+      // archive metadata exists but files are missing — rebuild below
+    }
+  }
+  const referenceArchive = await writeReferenceArchive(session);
+  const next = { ...session, referenceArchive };
+  if (session.analysisPath !== undefined) {
+    try {
+      const raw = JSON.parse(await readFile(session.analysisPath, "utf8")) as Record<string, unknown>;
+      await writeFile(session.analysisPath, `${JSON.stringify({ ...raw, referenceArchive }, null, 2)}\n`, "utf8");
+    } catch {
+      // keep in-memory archive even if analysis snapshot cannot be updated
+    }
+  }
+  return next;
 }
 
 export async function markInsightComplete(referenceDir: string): Promise<void> {

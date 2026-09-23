@@ -2,6 +2,14 @@ import { readFile } from "node:fs/promises";
 
 import type { ChatGatewayConfig } from "./llm.js";
 import { loadChatGateway } from "./llm.js";
+import {
+  adaptationMatchesReference,
+  countProductReferenceAssets,
+  hasProductReference,
+  hasProductReferenceBindings,
+  normalizeProductReferences,
+  productReferenceLabels,
+} from "./product-reference.js";
 import type { RuntimeCapabilities } from "./runtime-capabilities.js";
 import type { AnalysisSessionView } from "./shared.js";
 
@@ -98,54 +106,63 @@ export function validateOfficialSvml(
   const checks: OfficialPathCheck[] = [
     {
       id: "product-reference",
-      label: "参考图写入工程",
-      ok: svml.includes('id="product-reference"'),
-      detail: "应含 assets/product-reference 与 gpt/H3 Reference 绑定",
+      label: "参考图已关联",
+      ok: (() => {
+        const count = countProductReferenceAssets(svml);
+        return count > 0 && hasProductReferenceBindings(svml, count);
+      })(),
+      detail: "产品参考图已正确写入制作项目",
     },
     {
       id: "tts-audio",
-      label: "音色样本已写入工程",
+      label: "配音音色已就绪",
       ok: hasOfficialTtsVoice(svml) || !options.requireProductReference,
       detail: options.videoAroll
-        ? "H3 口播使用 TTS 音色样本（presenter-voice / voice-reference / fish:VoiceDesign），不以参考片原声做口播轨"
-        : "官方路径使用 generated-speech.wav，而非 reference-audio（参考片原声）",
+        ? "口播视频将使用改编配音的音色，不会直接使用参考片原声"
+        : "成片将使用改编配音音频，不会直接使用参考片原声",
     },
     {
       id: "h3-aroll",
-      label: "H3 A-roll 口播",
+      label: "口播视频轨道",
       ok: !options.videoAroll || svml.includes("h3:ReferenceVideo"),
-      detail: "启用 H3 口播时应含 h3:ReferenceVideo + h3-ugc-replica-v1 prompt",
+      detail: "口播视频生成配置已就绪",
     },
     {
       id: "speaker-template",
-      label: "H3 prompt 模板",
+      label: "口播生成模板",
       ok: !options.videoAroll || hasOfficialH3PromptTemplate(svml),
-      detail: "H3 prompt 应使用 h3-kit.h3-ugc-replica-v1（非 speaker-kit）",
+      detail: "口播视频使用官方复刻模板",
     },
     {
       id: "h3-timeline-shots",
-      label: "H3 时间轴分镜",
+      label: "口播分镜节奏",
       ok: !options.videoAroll || (usesTimelineH3Takes(svml) && !usesLegacyPerSceneH3(svml)),
-      detail: "启用 H3 口播时应为 shot_N-take（≤15s/镜），非 scene_N-take 按切点逐段生成",
+      detail: "口播已按每段不超过 15 秒拆分",
     },
     {
       id: "h3-frame-chain",
-      label: "H3 尾帧衔接",
+      label: "多段口播衔接",
       ok: !options.videoAroll || hasH3LastFrameChain(svml),
-      detail: "多镜 H3 口播应含 ExtractFrame(at=last) 与 shot_N-last.image 参考衔接",
+      detail: "多段口播之间的画面过渡已配置",
+    },
+    {
+      id: "h3-burned-captions",
+      label: "字幕生成方式",
+      ok: !options.videoAroll || !svml.includes("caption-fine"),
+      detail: "字幕将在口播视频中直接生成",
     },
     {
       id: "gpt-reference",
-      label: "B-roll 参考图 edits",
+      label: "画面参考图绑定",
       ok: svml.includes("<gpt:Reference image={product-reference")
         || (options.videoAroll && svml.includes("<h3:Reference image={product-reference")),
-      detail: "分镜图或 H3 口播应通过 Reference 绑定产品参考图（asset:Image 发布裸 id）",
+      detail: "补充画面已关联产品参考图",
     },
     {
       id: "no-reference-audio",
-      label: "未使用参考片原声",
+      label: "口播来源",
       ok: !svml.includes('id="reference-audio"'),
-      detail: "官方路径不应以 reference-audio 作为口播轨",
+      detail: "成片口播来自改编配音，而非参考片原声",
     },
   ];
   const relevant = options.requireProductReference
@@ -167,21 +184,17 @@ export async function buildOfficialPathReport(input: {
   const llmOk = gateway !== undefined && (process.env[gateway.apiKeyEnv]?.trim().length ?? 0) > 0;
   checks.push({
     id: "llm",
-    label: "对话模型 (Insight/Brief/Treatment/改写/prompt)",
+    label: "文案生成服务",
     ok: llmOk,
-    detail: llmOk
-      ? `已配置 ${gateway!.apiKeyEnv} → ${gateway!.model}`
-      : "请配置 OPENAI_BASE_URL、OPENAI_API_KEY 与 HYPIT_CHAT_MODEL",
+    detail: llmOk ? "文案解读与改写服务已就绪" : "文案生成服务未配置，请联系管理员",
   });
 
   const ttsOk = llmOk;
   checks.push({
     id: "tts",
-    label: "TTS 试听 / 音色样本",
+    label: "配音试听服务",
     ok: ttsOk,
-    detail: ttsOk
-      ? `改编审查与 H3 音色样本：${gateway!.ttsModel} / ${gateway!.ttsVoice}`
-      : "TTS 与对话模型共用 gateway.default 密钥",
+    detail: ttsOk ? "配音试听与音色样本服务已就绪" : "配音服务未配置，请联系管理员",
   });
 
   const h3Ok = !videoAroll
@@ -189,11 +202,11 @@ export async function buildOfficialPathReport(input: {
       && (process.env.H3_VIDEO_BASE_URL?.trim().length ?? 0) > 0);
   checks.push({
     id: "h3",
-    label: "MiniMax H3 口播",
+    label: "口播视频生成",
     ok: h3Ok,
     detail: videoAroll
-      ? (h3Ok ? "已配置 H3_VIDEO_API_KEY 与 H3_VIDEO_BASE_URL" : "启用 H3 口播需要 H3_VIDEO_API_KEY 与 H3_VIDEO_BASE_URL")
-      : "未启用 H3（仅静态分镜 + TTS）",
+      ? (h3Ok ? "口播视频生成服务已就绪" : "口播视频生成服务未配置，请联系管理员")
+      : "当前使用静态画面模式",
   });
 
   checks.push({
@@ -203,13 +216,14 @@ export async function buildOfficialPathReport(input: {
     detail: input.session.analysisPath === undefined ? "请先点击「开始分析」" : "已完成",
   });
 
-  const hasReference = input.session.productReferencePath !== undefined;
+  const { names: referenceNames } = normalizeProductReferences(input.session);
+  const hasReference = hasProductReference(input.session);
   checks.push({
     id: "reference-image",
     label: "参考图已上传",
     ok: hasReference,
     detail: hasReference
-      ? (input.session.productReferenceName ?? "已上传")
+      ? productReferenceLabels(referenceNames)
       : "请在「素材」上传产品/人物参考图",
   });
 
@@ -220,9 +234,9 @@ export async function buildOfficialPathReport(input: {
     label: "导演审查已通过",
     ok: reviewOk,
     detail: review?.status === "approved"
-      ? "Agent 已审 BRIEF / Treatment / 口播"
+      ? "创意方案与口播文案已确认"
       : hasReference
-        ? "请先在 Cursor 编辑 .hypit/analysis/director/ 并点击「导演审查通过」"
+        ? "请在 Cursor 中确认创意方案与口播文案，然后点击「导演审查通过」"
         : "上传参考图后启用",
   });
 
@@ -231,7 +245,7 @@ export async function buildOfficialPathReport(input: {
     && reviewOk
     && adapt?.status === "complete"
     && adapt.generatedSpeechPath !== undefined
-    && adapt.productReferenceSource === input.session.productReferencePath;
+    && adaptationMatchesReference(adapt, normalizeProductReferences(input.session).paths);
   checks.push({
     id: "adaptation",
     label: "改编配音已就绪",
@@ -241,7 +255,7 @@ export async function buildOfficialPathReport(input: {
       : adapt?.status === "error"
         ? (adapt.error ?? "制作失败")
         : adaptOk
-          ? "TTS 试听与 H3 音色样本已生成（成片口播由 H3 生成）"
+          ? "改编配音已生成，可试听确认"
           : reviewOk
             ? "导演审查通过后点击「开始制作配音」"
             : "请先完成导演审查",
@@ -250,9 +264,9 @@ export async function buildOfficialPathReport(input: {
   if (input.forBuild === true) {
     checks.push({
       id: "scaffold",
-      label: "复刻工程已生成",
+      label: "制作项目已生成",
       ok: input.session.scaffold?.runPath !== undefined,
-      detail: input.session.scaffold?.runPath ?? "请先点击「一键复刻」",
+      detail: input.session.scaffold?.runPath === undefined ? "请先点击「一键复刻」" : "制作项目已创建",
     });
   }
 
@@ -264,7 +278,7 @@ export async function buildOfficialPathReport(input: {
     } catch (error) {
       checks.push({
         id: "svml",
-        label: "工程 SVML 校验",
+        label: "制作项目文件",
         ok: false,
         detail: error instanceof Error ? error.message : String(error),
       });
@@ -276,9 +290,9 @@ export async function buildOfficialPathReport(input: {
 
 export function formatOfficialPathReport(report: OfficialPathReport): string {
   return [
-    "# 官方复刻路径检查",
+    "# 复刻准备清单",
     "",
-    report.ok ? "状态：**已通过**" : "状态：**未通过**（请补齐下列项后再一键复刻）",
+    report.ok ? "状态：**已就绪**" : "状态：**未完成**（请补齐下列项后再一键复刻）",
     "",
     ...report.checks.map((check) => `- [${check.ok ? "x" : " "}] **${check.label}** — ${check.detail}`),
     "",

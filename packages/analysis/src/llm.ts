@@ -70,17 +70,22 @@ export async function chatCompletion(input: {
   readonly system: string;
   readonly user: string;
   readonly imagePath?: string;
+  readonly imagePaths?: readonly string[];
 }): Promise<string> {
   const secret = process.env[input.gateway.apiKeyEnv]?.trim();
   if (secret === undefined || secret.length === 0) {
     throw new Error(`缺少 ${input.gateway.apiKeyEnv}，无法调用对话模型`);
   }
   const base = input.gateway.baseUrl.replace(/\/+$/u, "");
-  const userContent = input.imagePath === undefined
+  const imagePaths = input.imagePaths ?? (input.imagePath === undefined ? [] : [input.imagePath]);
+  const userContent = imagePaths.length === 0
     ? input.user
     : [
       { type: "text", text: input.user },
-      { type: "image_url", image_url: { url: await imageDataUrl(input.imagePath) } },
+      ...await Promise.all(imagePaths.map(async (path) => ({
+        type: "image_url" as const,
+        image_url: { url: await imageDataUrl(path) },
+      }))),
     ];
   const response = await fetch(`${base}/chat/completions`, {
     method: "POST",
@@ -126,7 +131,12 @@ export function extractJsonObject(text: string): Record<string, unknown> {
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("模型未返回有效 JSON");
   const jsonText = repairJsonText(candidate.slice(start, end + 1));
-  const parsed: unknown = JSON.parse(jsonText);
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("模型 JSON 格式无效");
-  return parsed as Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(jsonText);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("模型 JSON 格式无效");
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`模型返回的 JSON 无法解析（常见于口播/卖点里含未转义引号）：${detail}`);
+  }
 }

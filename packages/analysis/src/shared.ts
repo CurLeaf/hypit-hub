@@ -123,12 +123,59 @@ export type AdaptationView = {
   readonly error?: string;
   readonly dir?: string;
   readonly generatedSpeechPath?: string;
+  /** Measured duration of generated-speech.wav after TTS. */
+  readonly generatedSpeechDurationSeconds?: number;
+  /** Planned H3 take durations (≤15s each) derived from generated speech. */
+  readonly h3TakeDurations?: readonly number[];
   readonly voiceReferencePath?: string;
   readonly productReferencePath?: string;
   readonly productReferenceSource?: string;
+  readonly productReferencePaths?: readonly string[];
+  readonly productReferenceSources?: readonly string[];
   readonly briefPath?: string;
   readonly treatmentPath?: string;
   readonly adaptedScenesPath?: string;
+};
+
+export type VideoGenerationTakeView = {
+  readonly takeId: string;
+  readonly promptSummary: string;
+  readonly prompt: string;
+  /** 根据 Build 结果与 SVML 重建的请求预览，非运行时原始 HTTP body */
+  readonly requestPreview?: string;
+  readonly durationSeconds?: number;
+  readonly resolution?: string;
+  readonly aspectRatio?: string;
+};
+
+export type GeneratedVideoView = {
+  readonly name: string;
+  readonly displayName?: string;
+  readonly path: string;
+  readonly size?: number;
+  readonly mediaType: string;
+  readonly buildId?: string;
+  readonly recordedAt?: string;
+  readonly buildStatus?: string;
+  readonly buildFailureSummary?: string;
+  readonly buildFailureDetail?: string;
+  readonly generationTakes?: readonly VideoGenerationTakeView[];
+};
+
+export function isFailedBuildStatus(status: string | undefined): boolean {
+  return status === "failed"
+    || status === "error"
+    || status === "cancelled"
+    || status === "partial";
+}
+
+export function isFailedGeneratedVideo(video: GeneratedVideoView): boolean {
+  return isFailedBuildStatus(video.buildStatus);
+}
+
+export type VideoRegistryStatsView = {
+  readonly totalVideos: number;
+  readonly totalBuilds: number;
 };
 
 export type BuildJobView = {
@@ -137,6 +184,8 @@ export type BuildJobView = {
   readonly phase?: string;
   readonly error?: string;
   readonly outputVideoPath?: string;
+  readonly generatedVideos?: readonly GeneratedVideoView[];
+  readonly generatedVideoCount?: number;
 };
 
 export type ReferenceArchiveView = {
@@ -156,7 +205,11 @@ export type AnalysisSessionView = {
   readonly videoUrl?: string;
   readonly productReferencePath?: string;
   readonly productReferenceName?: string;
+  readonly productReferencePaths?: readonly string[];
+  readonly productReferenceNames?: readonly string[];
   readonly videoAroll?: boolean;
+  /** Target output duration in seconds for adapted speech and H3 shot planning. */
+  readonly targetDurationSeconds?: number;
   readonly probe?: MediaProbeView;
   readonly transcript?: {
     readonly language: string;
@@ -181,6 +234,8 @@ export type AnalysisSessionView = {
   readonly adaptation?: AdaptationView;
   readonly adaptationGoal?: string;
   readonly directorReview?: DirectorReviewView;
+  readonly videoStats?: VideoRegistryStatsView;
+  readonly allGeneratedVideos?: readonly GeneratedVideoView[];
 };
 
 export type OfficialPathCheckView = {

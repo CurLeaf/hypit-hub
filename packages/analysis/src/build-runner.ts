@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { loadWorkspaceEnv } from "./workspace-env.js";
+import { loadHypitAnalysisEnv } from "./workspace-env.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,8 +28,10 @@ function hypitLauncher(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../bin/hypit.mjs");
 }
 
+const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
 async function runHypit(args: readonly string[], workspaceRoot: string): Promise<string> {
-  await loadWorkspaceEnv(workspaceRoot);
+  await loadHypitAnalysisEnv(distributionRoot, workspaceRoot);
   const launcher = hypitLauncher();
   try {
     const { stdout } = await execFileAsync(process.execPath, [launcher, ...args, "--workspace", workspaceRoot, "--json"], {
@@ -78,7 +80,7 @@ export async function submitBuild(workspaceRoot: string, runPath: string, runtim
     const detail = extractCliFailure(raw);
     if (detail !== undefined) {
       if (/OPENAI_API_KEY|RUNTIME_CREDENTIAL_MISSING|credential.*missing/iu.test(detail)) {
-        throw new Error("Build 提交失败：未配置 OPENAI_API_KEY。请在项目目录创建 .env 并重启 hypit analysis，或先运行 . .\\load-env.ps1。");
+        throw new Error("Build 提交失败：未配置 OPENAI_API_KEY。请在仓库根目录创建 .env（复制 .env.example）并重启 hypit analysis。");
       }
       throw new Error("Build 提交失败：" + detail);
     }

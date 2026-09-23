@@ -1,0 +1,67 @@
+{
+  "format": "hypit.runtime-local@1",
+  "dataRoot": ".hypit/runtimes/local",
+  "credentials": {
+    "env": { "use": "@hypit/credential-store-env" }
+  },
+  "endpoints": {
+    "whisperx.local": {
+      "use": "@hypit/provider-whisperx-local",
+      "config": {
+        "expectedModel": "small",
+        "expectedDevice": "cpu",
+        "expectedCompute": "int8",
+        "expectedBatchSize": 8,
+        "requestTimeoutMs": 1200000
+      }
+    },
+    "media.local": {
+      "use": "@hypit/provider-media-local",
+      "config": { "defaultConcurrency": 2 }
+    },
+    "hyperframes.local": {
+      "use": "@hypit/provider-hyperframes-local",
+      "config": { "workers": 1, "defaultConcurrency": 1, "browserGpu": "software" }
+    },
+    "gateway.default": {
+      "use": "@hypit/provider-openai-compatible",
+      "config": {
+        "baseUrl": { "store": "env", "key": "OPENAI_BASE_URL" },
+        "apiKey": { "store": "env", "key": "OPENAI_API_KEY" },
+        "chatModel": "deepseek-v4-flash",
+        "ttsModel": "FunAudioLLM/CosyVoice2-0.5B",
+        "ttsVoice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+        "defaultConcurrency": 1,
+        "videoAdapter": "openai-videos",
+        "models": {
+          "@hypit/gpt-image@1#gpt-image-2": "gpt-image-2"
+        },
+        "routes": {
+          "image": "/images/generations",
+          "imageEdits": "/images/edits",
+          "speech": "/audio/speech",
+          "videoSubmit": "/videos",
+          "videoStatus": "/videos/{id}"
+        }
+      }
+    },
+    "gateway.minimax": {
+      "use": "@hypit/provider-openai-compatible",
+      "config": {
+        "baseUrl": { "store": "env", "key": "H3_VIDEO_BASE_URL" },
+        "apiKey": { "store": "env", "key": "H3_VIDEO_API_KEY" },
+        "defaultConcurrency": 1,
+        "videoAdapter": "minimax-v2",
+        "referenceUpload": "s3",
+        "models": {
+          "@hypit/minimax-h3@1#minimax-h3": "MiniMax-H3"
+        }
+      }
+    }
+  },
+  "bindings": {
+    "@hypit/whisperx@1#whisperx-alignment": "whisperx.local",
+    "@hypit/gpt-image@1#gpt-image-2": "gateway.default",
+    "@hypit/minimax-h3@1#minimax-h3": "gateway.minimax"
+  }
+}

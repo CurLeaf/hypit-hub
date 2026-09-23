@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { approveDirectorReview } from "./director-review.js";
+import { normalizeProductReferences } from "./product-reference.js";
+import { resolveTargetDurationSeconds } from "./target-duration.js";
 import type {
   AnalysisSessionView,
   DirectorAgentConfigView,
@@ -98,11 +100,12 @@ export function buildDirectorAgentPrompt(input: RunDirectorAgentInput): string {
     "",
     "先阅读：",
     `- ${relPath(input.workspaceRoot, review?.requestPath ?? join(input.workspaceRoot, ".hypit/analysis/director/REVIEW_REQUEST.md"))}`,
-    `- 产品参考图：${relPath(input.workspaceRoot, input.session.productReferencePath)}`,
+    ...normalizeProductReferences(input.session).paths.map((path, index) => `- 产品参考图 ${index + 1}：${relPath(input.workspaceRoot, path)}`),
     `- 参考视频转写：${relPath(input.workspaceRoot, input.session.transcript?.path)}`,
     `- 深读归档：${relPath(input.workspaceRoot, input.session.referenceArchive?.referenceDir)}`,
     "",
     `改编说明：${goal}`,
+    `目标成片时长：约 ${resolveTargetDurationSeconds(input.session)} 秒。scenes.json 各段口播合计朗读时长应接近该目标，后续会拆成多个 ≤15 秒的 H3 分镜。`,
     "",
     "必须做到：",
     "1. BRIEF.md 写清产品名、品类、可被镜头验证的卖点、口语价格锚点；删除所有占位符（含「请填写」「请写明」）",

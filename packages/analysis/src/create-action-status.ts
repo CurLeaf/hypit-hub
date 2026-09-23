@@ -23,14 +23,8 @@ export function resolveCreateActionStatus(
   session: AnalysisSessionView,
   options?: {
     readonly pending?: CreateActionPending;
-    readonly officialPathReady?: boolean;
   },
 ): CreateActionStatus {
-  const pending = options?.pending;
-  if (pending !== undefined) {
-    return { tone: "running", headline: pending.phase };
-  }
-
   const failureDetail = sessionFailureDetail(session);
   if (session.build?.status === "error" && failureDetail !== undefined) {
     return { tone: "error", headline: "视频生成失败", detail: failureDetail };
@@ -38,6 +32,11 @@ export function resolveCreateActionStatus(
   if (session.workflowJob?.status === "error" && failureDetail !== undefined) {
     const headline = session.scaffold === undefined ? "复刻失败" : "生成失败";
     return { tone: "error", headline, detail: failureDetail };
+  }
+
+  const pending = options?.pending;
+  if (pending !== undefined) {
+    return { tone: "running", headline: pending.phase };
   }
 
   if (session.workflowJob?.status === "running") {
@@ -52,31 +51,10 @@ export function resolveCreateActionStatus(
   }
 
   if (session.scaffold !== undefined) {
-    return { tone: "hint", headline: "工程已生成，点击下方「开始生成视频」提交 Build。" };
+    return { tone: "hint", headline: "制作项目已就绪，点击下方「开始生成视频」。" };
   }
 
-  if (options?.officialPathReady === true) {
-    return { tone: "hint", headline: "检查已通过，点击下方「一键复刻」生成工程。" };
-  }
-
-  if (options?.officialPathReady === false) {
-    return { tone: "hint", headline: "请先补齐上方检查项，再执行复刻。" };
-  }
-
-  return { tone: "hint", headline: "正在加载复刻状态…" };
-}
-
-export function officialPathCheckHint(
-  session: AnalysisSessionView,
-  officialPathReady: boolean | undefined,
-): string {
-  if (officialPathReady !== true) {
-    return "请补齐上述未完成项。官方路径需要：LLM 解读/改写 + TTS 试听/音色样本 + H3 口播成片 + 参考图 edits。";
-  }
-  if (session.scaffold !== undefined) {
-    return "检查已通过。工程已生成，请点击下方「开始生成视频」。";
-  }
-  return "已通过官方路径检查，可点击「一键复刻」。";
+  return { tone: "hint", headline: "完成参考图与改编配音后，点击下方「一键复刻」。" };
 }
 
 export function isReplicateActionBusy(

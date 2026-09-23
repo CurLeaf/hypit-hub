@@ -142,6 +142,7 @@ test("planning follows the model's declared assembly edges and leaves an upstrea
         available: false,
       },
     ],
+    pendingText: [],
     complete: false,
   });
   const facet = definition.component.plannedNeeds[0]!;

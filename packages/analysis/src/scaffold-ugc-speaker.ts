@@ -1,11 +1,14 @@
 import type { SpeechEstimateLanguage } from "@hypit/estimate";
 
 import { sanitizeH3ShotAction } from "./h3-shot-prompt.js";
+import { H3_TIER_LIST_OVERLAY_BLOCK } from "./tier-list-mode.js";
+import { inferProductReferencesFromShot, resolveH3ShotImageRefs } from "./h3-shot-reference.js";
 import type { ScenePlan } from "./scene-plan.js";
 import {
   fitsH3Duration,
   H3_MAX_DURATION_SEC,
   H3_MIN_DURATION_SEC,
+  measureSegmentSeconds,
   resolveMeasureLanguage,
 } from "./measure-segments.js";
 import { buildOfficialScript, sanitizeScriptId } from "./script-format.js";
@@ -141,19 +144,80 @@ export function selectSpeakingScenes(scenes: readonly ScenePlan[]): readonly Sce
   return spoken.slice(0, MAX_H3_TAKES);
 }
 
+function speechDurationForH3(text: string, timelineSlotSeconds: number, language: SpeechEstimateLanguage): number {
+  const speechSeconds = measureSegmentSeconds(text, language);
+  return Math.min(
+    H3_MAX_DURATION_SEC,
+    Math.max(H3_MIN_DURATION_SEC, Math.ceil(Math.max(timelineSlotSeconds, speechSeconds))),
+  );
+}
+
+/** Expand timeline shots when dialogue exceeds one H3 request; align duration with speech estimate. */
+export function refineShotsForH3Speech(
+  shots: readonly ShotPlan[],
+  language: SpeechEstimateLanguage | string = "zh",
+): readonly ShotPlan[] {
+  const resolved = resolveMeasureLanguage(language);
+  const refined: ShotPlan[] = [];
+
+  for (const shot of shots) {
+    const parts = splitSpokenTextForH3(shot.text, resolved);
+    if (parts.length <= 1) {
+      const text = parts[0] ?? shot.text;
+      if (text.replace(/\s+/gu, "").length === 0) continue;
+      refined.push({
+        ...shot,
+        text,
+        durationSeconds: speechDurationForH3(text, shot.durationSeconds, resolved),
+      });
+      continue;
+    }
+
+    const totalUnits = parts.reduce((sum, part) => sum + Math.max(1, compactLen(part)), 0);
+    let cursor = shot.start;
+    parts.forEach((text, partIndex) => {
+      const weight = Math.max(1, compactLen(text)) / totalUnits;
+      const slotSeconds = partIndex === parts.length - 1
+        ? Math.max(H3_MIN_DURATION_SEC, shot.end - cursor)
+        : Math.max(H3_MIN_DURATION_SEC, shot.durationSeconds * weight);
+      const durationSeconds = speechDurationForH3(text, slotSeconds, resolved);
+      const start = cursor;
+      const end = start + durationSeconds;
+      cursor = end;
+      refined.push({
+        ...shot,
+        id: `${shot.id}-p${partIndex + 1}`,
+        index: refined.length,
+        start,
+        end,
+        durationSeconds,
+        text,
+      });
+    });
+  }
+
+  return refined.map((shot, index) => ({
+    ...shot,
+    id: `shot_${index + 1}`,
+    index,
+  }));
+}
+
 export function selectH3Shots(
   scenes: readonly ScenePlan[],
   referenceDuration: number,
+  language: SpeechEstimateLanguage | string = "zh",
 ): {
   readonly shots: readonly ShotPlan[];
   readonly plannedTakeCount: number;
   readonly truncated: boolean;
 } {
-  const all = groupScenesIntoShots(scenes, referenceDuration);
-  const truncated = all.length > MAX_H3_TAKES;
+  const timelineShots = groupScenesIntoShots(scenes, referenceDuration);
+  const refined = refineShotsForH3Speech(timelineShots, language);
+  const truncated = refined.length > MAX_H3_TAKES;
   return {
-    shots: truncated ? all.slice(0, MAX_H3_TAKES) : all,
-    plannedTakeCount: all.length,
+    shots: truncated ? refined.slice(0, MAX_H3_TAKES) : refined,
+    plannedTakeCount: refined.length,
     truncated,
   };
 }
@@ -218,8 +282,12 @@ export function buildOfficialSpeakerSvml(input: {
   readonly voiceSampleText: string;
   readonly voiceCastingDirection: string;
   readonly voiceAssetRel?: string;
-  readonly productImageRef: string;
+  readonly productImageRef?: string;
+  readonly productImageRefs?: readonly string[];
   readonly shotActions?: ReadonlyMap<string, string>;
+  readonly shotReferencePlan?: ReadonlyMap<string, readonly string[]>;
+  readonly productReferenceNames?: readonly string[];
+  readonly useTierListOverlay?: boolean;
 }): {
   readonly scriptBody: string;
   readonly imports: string;
@@ -235,8 +303,18 @@ export function buildOfficialSpeakerSvml(input: {
     readonly truncated: boolean;
   };
 } {
+  const productImageRefs = input.productImageRefs
+    ?? (input.productImageRef === undefined ? [] : [input.productImageRef]);
+  const productReferenceCatalog = productImageRefs.map((id, index) => ({
+    id,
+    name: input.productReferenceNames?.[index]?.trim() || id,
+  }));
   const referenceDuration = resolveReferenceDuration(input.scenes, input.referenceDuration);
-  const { shots, plannedTakeCount, truncated } = selectH3Shots(input.scenes, referenceDuration);
+  const { shots, plannedTakeCount, truncated } = selectH3Shots(
+    input.scenes,
+    referenceDuration,
+    input.language,
+  );
   const takes = expandShotsForH3(shots);
   const scriptBody = buildOfficialScript(takes.map((take) => ({
     id: sanitizeScriptId(take.id),
@@ -271,24 +349,43 @@ export function buildOfficialSpeakerSvml(input: {
   const semanticBlocks: string[] = [];
   const timelineTakes: string[] = [];
   const visualItems: string[] = [];
+  const tierListOverlayBlock = input.useTierListOverlay === true
+    ? `\n  <text:Value id="tier-list-overlay">${xmlEscape(H3_TIER_LIST_OVERLAY_BLOCK)}</text:Value>`
+    : "";
+  const tierListPromptSet = input.useTierListOverlay === true
+    ? `\n    <text:Set name="tier-list" text={tier-list-overlay}/>`
+    : "";
 
   for (const [index, take] of takes.entries()) {
     const takeId = sanitizeScriptId(take.id);
     const duration = measureH3ShotDuration({ durationSeconds: take.shot.durationSeconds });
-    const action = xmlEscape(resolveH3ShotAction(take.shot, input.shotActions));
-    const imageRef = index === 0
-      ? input.productImageRef
-      : `${sanitizeScriptId(takes[index - 1]!.id)}-last.image`;
+    const resolvedAction = resolveH3ShotAction(take.shot, input.shotActions);
+    const action = xmlEscape(resolvedAction);
+    const inferredProductRefs = inferProductReferencesFromShot({
+      action: resolvedAction,
+      scenePromptHint: take.shot.scenePromptHint,
+      dialogue: take.text,
+      catalog: productReferenceCatalog,
+    });
+    const imageRefs = resolveH3ShotImageRefs({
+      index,
+      shotId: takeId,
+      ...(index > 0 ? { previousTakeId: sanitizeScriptId(takes[index - 1]!.id) } : {}),
+      productRefs: inferredProductRefs,
+      ...(input.shotReferencePlan === undefined ? {} : { shotReferencePlan: input.shotReferencePlan }),
+      ...(productImageRefs[0] === undefined ? {} : { fallbackProductRef: productImageRefs[0] }),
+    });
+    const imageReferenceLines = imageRefs.map((imageRef) => `    <h3:Reference image={${imageRef}}/>`).join("\n");
     const blocks = [
       `
   <text:Value id="${takeId}-action">${action}</text:Value>
   <text:Render id="${takeId}-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}>
     <text:Set name="dialogue" text={story.segment.${takeId}.dialogue}/>
-    <text:Set name="action" text={${takeId}-action}/>
+    <text:Set name="action" text={${takeId}-action}/>${tierListPromptSet}
   </text:Render>
   <h3:ReferenceVideo id="${takeId}-take" prompt={${takeId}-prompt} duration="${duration}"
     resolution="768P" aspect-ratio="9:16">
-    <h3:Reference image={${imageRef}}/>
+${imageReferenceLines}
     <h3:Reference audio={${voiceAudioRef}}/>
   </h3:ReferenceVideo>
   <pipeline:Normalize id="${takeId}-media" source={${takeId}-take.video}
@@ -313,7 +410,7 @@ export function buildOfficialSpeakerSvml(input: {
     scriptBody,
     imports,
     voiceBlock,
-    generationBlock: takeBlocks.join("\n"),
+    generationBlock: tierListOverlayBlock + takeBlocks.join("\n"),
     semanticBlock: semanticBlocks.join("\n"),
     timelineTakes: timelineTakes.join("\n"),
     visualItems: visualItems.join("\n"),

@@ -11,10 +11,17 @@ import { adaptScenesForProduct } from "./script-adapt.js";
 import { resolveSpeechAudio, type SpeechMode } from "./speech-synth.js";
 
 import { buildH3ShotActions } from "./h3-shot-prompt.js";
+import { buildH3ShotReferencePlan, buildProductReferenceCatalog } from "./h3-shot-reference.js";
+import { resolveTierListMode } from "./tier-list-mode.js";
+import {
+  normalizeProductReferences,
+  productReferenceAssetFileName,
+  productReferenceAssetId,
+} from "./product-reference.js";
 import { adaptationMatchesReference } from "./replica-readiness.js";
 import { loadRuntimeCapabilities } from "./runtime-capabilities.js";
-import { buildOfficialSpeakerSvml, MAX_H3_TAKES, selectH3Shots } from "./scaffold-ugc-speaker.js";
-import { groupScenesIntoShots } from "./shot-plan.js";
+import { buildOfficialSpeakerSvml, MAX_H3_TAKES, resolveH3ShotAction, selectH3Shots } from "./scaffold-ugc-speaker.js";
+import { resolveH3ReferenceDuration, resolveTargetDurationSeconds } from "./target-duration.js";
 import { sanitizeScriptId } from "./script-format.js";
 import type { AdaptationView, AnalysisSessionView, BriefView, TreatmentView, ViralInsightView } from "./shared.js";
 
@@ -125,7 +132,7 @@ export async function generateUgcReplicaProject(input: {
   readonly formatId: string;
   readonly runtimePath?: string;
   readonly speechMode?: SpeechMode;
-  readonly productReferencePath?: string;
+  readonly productReferencePaths?: readonly string[];
   readonly videoAroll?: boolean;
   readonly brief?: BriefView;
   readonly goal?: string;
@@ -134,12 +141,13 @@ export async function generateUgcReplicaProject(input: {
   const { session, insight, treatment, productionDir, layout, workspaceRoot, formatId } = input;
   if (session.videoPath === undefined) throw new Error("缺少参考视频路径");
   if (session.probe === undefined) throw new Error("缺少媒体探测信息");
-  if (input.productReferencePath === undefined) {
+  const productReferencePaths = input.productReferencePaths ?? normalizeProductReferences(input.session).paths;
+  if (productReferencePaths.length === 0) {
     throw new Error("生成视频需要参考图与改编配音，请先在 Analysis 上传参考图并完成配音制作");
   }
 
   const assetsDir = layout.assetsDir;
-  const hasProductReference = input.productReferencePath !== undefined;
+  const hasProductReference = productReferencePaths.length > 0;
   const speechMode: SpeechMode = hasProductReference
     ? "tts"
     : (input.speechMode ?? "reference");
@@ -151,7 +159,7 @@ export async function generateUgcReplicaProject(input: {
   }
 
   const prepared = input.preparedAdaptation?.status === "complete"
-    && adaptationMatchesReference(input.preparedAdaptation, input.productReferencePath)
+    && adaptationMatchesReference(input.preparedAdaptation, productReferencePaths)
     ? input.preparedAdaptation
     : undefined;
 
@@ -175,6 +183,7 @@ export async function generateUgcReplicaProject(input: {
         ...(input.brief === undefined ? {} : { brief: input.brief }),
         scenes: baseScenes,
         ...(input.goal === undefined ? {} : { goal: input.goal }),
+        targetDurationSeconds: resolveTargetDurationSeconds(session),
         ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
         requireSuccess: true,
       });
@@ -200,7 +209,9 @@ export async function generateUgcReplicaProject(input: {
   const spokenText = scenes.map((scene) => scene.text.replace(/\s+/gu, "")).filter((text) => text.length > 0).join("");
   const useVideoAroll = hasProductReference && (input.videoAroll ?? true);
   const capabilities = await loadRuntimeCapabilities(input.runtimePath);
+  // H3 r2va path: speech and burned-in captions come from the model, not caption-fine.
   const useOfficialSpeaker = useVideoAroll && hasProductReference;
+  const h3BurnedCaptions = useOfficialSpeaker;
   const needsReferenceAudioAsset = !useOfficialSpeaker;
   const audioPath = join(assetsDir, speechMode === "tts" ? "generated-speech.wav" : "reference-audio.wav");
   if (needsReferenceAudioAsset) {
@@ -221,31 +232,41 @@ export async function generateUgcReplicaProject(input: {
   const portraitUgc = hasProductReference;
   const width = portraitUgc ? 1080 : Math.max(540, session.probe.width);
   const height = portraitUgc ? 1920 : Math.max(960, session.probe.height);
-  const durationSec = Math.ceil(session.probe.duration);
+  const durationSec = resolveH3ReferenceDuration({ session, adaptation: prepared });
 
+  const productImageRefs: string[] = [];
   let productAssetBlock = "";
   if (hasProductReference) {
-    const sourceImage = prepared?.productReferencePath ?? input.productReferencePath!;
-    const ext = extname(sourceImage) || ".jpg";
-    const destination = join(assetsDir, `product-reference${ext}`);
-    await copyFile(sourceImage, destination);
-    const productRel = relativeAssetPath(layout.authorsDir, destination);
-    productAssetBlock = `\n  <asset:Image id="product-reference" src="${productRel}"/>\n`;
+    const preparedPaths = prepared?.productReferencePaths
+      ?? (prepared?.productReferencePath === undefined ? undefined : [prepared.productReferencePath]);
+    const sourcePaths = preparedPaths ?? productReferencePaths;
+    const assetBlocks: string[] = [];
+    for (const [index, sourceImage] of sourcePaths.entries()) {
+      const ext = extname(sourceImage) || ".jpg";
+      const destination = join(assetsDir, productReferenceAssetFileName(index, ext));
+      await copyFile(sourceImage, destination);
+      const assetId = productReferenceAssetId(index);
+      productImageRefs.push(assetId);
+      const productRel = relativeAssetPath(layout.authorsDir, destination);
+      assetBlocks.push(`  <asset:Image id="${assetId}" src="${productRel}"/>`);
+    }
+    productAssetBlock = `\n${assetBlocks.join("\n")}\n`;
   }
 
   const imageScenes = scenesForStillImages(scenes, useVideoAroll, useOfficialSpeaker, hasProductReference);
   const sceneImageBlocks = imageScenes.map((scene) => {
     const basePrompt = scene.prompt.replace(/[<>&]/gu, "");
     const prompt = hasProductReference
-      ? `${basePrompt} Preserve the exact product or subject appearance from the supplied reference image.`
+      ? `${basePrompt} Preserve the exact product or subject appearance from the supplied reference images.`
       : basePrompt;
     if (!hasProductReference) {
       return defaultPhoneUgcBlocks({ ...scene, prompt }, insight);
     }
+    const referenceLines = productImageRefs.map((ref) => `    <gpt:Reference image={${ref}}/>`).join("\n");
     return `
   <text:Value id="${scene.id}-prompt">${prompt}</text:Value>
   <gpt:Image id="${scene.id}" prompt={${scene.id}-prompt} aspect-ratio="9:16" resolution="1K">
-    <gpt:Reference image={product-reference}/>
+${referenceLines}
   </gpt:Image>`;
   }).join("\n");
 
@@ -292,9 +313,35 @@ export async function generateUgcReplicaProject(input: {
     }
     const voiceRel = relativeAssetPath(layout.authorsDir, voiceSamplePath);
     const speakingScenes = scenes.filter((scene) => scene.text.replace(/\s+/gu, "").length > 0);
-    const shotActions = await buildH3ShotActions({
-      shots: groupScenesIntoShots(scenes, durationSec),
+    const { names: productReferenceNames } = normalizeProductReferences(session);
+    const h3Shots = selectH3Shots(scenes, durationSec, language).shots;
+    const useTierListOverlay = resolveTierListMode({
       insight,
+      ...(treatment === undefined ? {} : { treatment }),
+      ...(input.brief === undefined ? {} : { brief: input.brief }),
+      adaptationGoal: input.goal ?? session.adaptationGoal,
+      scenes: h3Shots,
+    });
+    const shotActions = await buildH3ShotActions({
+      shots: h3Shots,
+      insight,
+      useTierListOverlay,
+      ...(treatment === undefined ? {} : { treatment }),
+      ...(input.brief === undefined ? {} : { brief: input.brief }),
+      ...(input.goal === undefined && session.adaptationGoal === undefined
+        ? {}
+        : { adaptationGoal: input.goal ?? session.adaptationGoal }),
+      ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
+      workspaceRoot: session.workspaceRoot,
+    });
+    const resolvedActions = new Map<string, string>();
+    for (const shot of h3Shots) {
+      resolvedActions.set(shot.id, resolveH3ShotAction(shot, shotActions));
+    }
+    const shotReferencePlan = await buildH3ShotReferencePlan({
+      shots: h3Shots,
+      resolvedActions,
+      catalog: buildProductReferenceCatalog(productImageRefs, productReferenceNames),
       ...(treatment === undefined ? {} : { treatment }),
       ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
       workspaceRoot: session.workspaceRoot,
@@ -308,8 +355,11 @@ export async function generateUgcReplicaProject(input: {
       voiceCastingDirection:
         "A clear, engaging Chinese short-form product presenter voice: bright, confident, conversational, with natural emphasis for social-video promo delivery.",
       ...(capabilities.fishSpeech ? {} : { voiceAssetRel: voiceRel }),
-      productImageRef: "product-reference",
+      productImageRefs,
+      productReferenceNames,
       ...(shotActions.size > 0 ? { shotActions } : {}),
+      shotReferencePlan,
+      useTierListOverlay,
     });
     officialSpeakerImports = official.imports;
     voiceBlock = official.voiceBlock;
@@ -336,6 +386,17 @@ export async function generateUgcReplicaProject(input: {
   const referenceAudioBlock = needsReferenceAudioAsset
     ? `\n  <asset:Audio id="reference-audio" src="${audioRel}"/>`
     : "";
+  const captionImports = h3BurnedCaptions ? "" : `
+  <import as="caption-fine" from="@hypit/caption-fine@1"/>
+  <import as="fonts" from="@hypit/fonts-open@1"/>`;
+  const captionBlock = h3BurnedCaptions ? "" : `
+  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
+  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
+  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
+    <caption-fine:Use style={caption-style}/>
+  </caption-fine:Track>`;
+  const captionFilmTrack = h3BurnedCaptions ? "" : `
+    <film:Track source={captions.track}/>`;
 
   const svml = `<?svml using="@hypit/markup@1"?>
 <svml>
@@ -346,9 +407,7 @@ export async function generateUgcReplicaProject(input: {
   <import as="whisperx" from="@hypit/whisperx@1"/>
   <import as="time" from="@hypit/timeline-author@1"/>
   <import as="sound" from="@hypit/sound@1"/>
-  <import as="media-track" from="@hypit/media-track@1"/>
-  <import as="caption-fine" from="@hypit/caption-fine@1"/>
-  <import as="fonts" from="@hypit/fonts-open@1"/>
+  <import as="media-track" from="@hypit/media-track@1"/>${captionImports}
   <import as="spatial" from="@hypit/spatial@1"/>
   <import as="film" from="@hypit/film@1"/>
   <import as="render" from="@hypit/render-hyperframes@1"/>
@@ -383,17 +442,10 @@ ${timelineTakes}
 ${heroVisualItems}
 ${brollItems}
   </media-track:Track>
-
-  <fonts:Stack id="display-font" family="noto-sans-sc" weight="700" style="normal"/>
-  <caption-fine:Style id="caption-style" recipe={recipes.caption.primary} font={display-font}/>
-  <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}>
-    <caption-fine:Use style={caption-style}/>
-  </caption-fine:Track>
-
+${captionBlock}
   <film:Film id="main" canvas={vertical} timeline={speech.timeline} appearance={recipes.film.vertical}>
     <film:Track source={visual.visual}/>
-    <film:Track source={speech-sound.audio}/>
-    <film:Track source={captions.track}/>
+    <film:Track source={speech-sound.audio}/>${captionFilmTrack}
   </film:Film>
   <render:Video id="final" composition={main.composition} timeline={speech.timeline}/>
 </svml>
@@ -414,12 +466,12 @@ ${brollItems}
     "## 结构",
     ...scenes.map((scene) => "- " + scene.start + "s–" + scene.end + "s：" + scene.text.slice(0, 40) + "…"),
     "",
-    ...(hasProductReference ? ["", "## 参考图与改编", "- 用户参考图已写入 `assets/product-reference.*`。",
+    ...(hasProductReference ? ["", "## 参考图与改编", `- 用户参考图已写入 assets（共 ${productImageRefs.length} 张）。`,
       "- 口播文案：按爆款结构改写（对话模型），非参考片原文。",
       "- 配音：Fish VoiceDesign（若 Runtime 已绑定）或 TTS 音色样本（BYOK 兜底）。",
       useVideoAroll
         ? [
-          `- A-roll：h3-ugc-replica-v1 + H3 按参考片时间轴每 ≤15s 一镜（共 ${selectH3Shots(scenes, durationSec).shots.length} 镜，尾帧衔接），时间轴与字幕对齐 H3 口型音轨。`,
+          `- A-roll：h3-ugc-replica-v1 + H3 按参考片时间轴每 ≤15s 一镜（共 ${selectH3Shots(scenes, durationSec).shots.length} 镜，尾帧衔接）；口播与字幕均由 H3 在成片内烧录。`,
           ...(h3ShotTruncationNote.length > 0 ? [h3ShotTruncationNote] : []),
         ].join("\n")
         : "- 画面：`gpt:Image` 的 `<gpt:Reference>` 传入模型。", ""] : []),

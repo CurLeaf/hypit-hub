@@ -73,6 +73,10 @@ examples/**/.svml/
 # Reverse-engineering scratch projects live outside the repository too
 /projects/*
 
+# Example fixtures must not accumulate local production output.
+examples/**/productions/
+examples/**/references/
+
 # Analysis replica outputs and local origin footage stay on the machine.
 /origin.mp4
 /productions/

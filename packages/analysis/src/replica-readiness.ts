@@ -3,6 +3,11 @@ import { join } from "node:path";
 
 import type { AdaptationView, AnalysisSessionView, OfficialPathReportView } from "./shared.js";
 import { adaptationDir } from "./prepare-adaptation.js";
+import {
+  adaptationMatchesReference,
+  hasProductReference,
+  normalizeProductReferences,
+} from "./product-reference.js";
 import { refreshScaffoldCheck } from "./workflow.js";
 import {
   assertOfficialH3Credential,
@@ -36,16 +41,10 @@ async function listProductReferenceAssets(assetsDir: string): Promise<readonly s
 }
 
 export function needsProductAdaptation(session: AnalysisSessionView): boolean {
-  return session.productReferencePath !== undefined;
+  return hasProductReference(session);
 }
 
-export function adaptationMatchesReference(
-  adaptation: AdaptationView | undefined,
-  productReferencePath: string | undefined,
-): boolean {
-  if (adaptation === undefined || productReferencePath === undefined) return false;
-  return adaptation.productReferenceSource === productReferencePath;
-}
+export { adaptationMatchesReference };
 
 export async function assertOfficialReplicaCredentials(
   session: AnalysisSessionView,
@@ -85,17 +84,17 @@ export async function checkReplicationReadiness(
     const hasVoiceReference = await fileExists(join(assetsDir, "voice-reference.wav"));
     if (useVideoAroll) {
       if (!capabilities.fishSpeech && !hasVoiceReference) {
-        issues.push("工程内缺少 H3 音色样本 voice-reference.wav，请重新点击「一键复刻」");
+        issues.push("制作项目缺少配音音色文件，请重新点击「一键复刻」");
       }
     } else if (!hasGeneratedSpeech) {
-      issues.push("工程内缺少配音素材 generated-speech.wav，请重新点击「一键复刻」");
+      issues.push("制作项目缺少配音素材，请重新点击「一键复刻」");
     }
     const productAssets = await listProductReferenceAssets(assetsDir);
     if (productAssets.length === 0) {
-      issues.push("工程内缺少参考图素材 product-reference.*，请重新点击「一键复刻」");
+      issues.push("制作项目缺少参考图素材，请重新点击「一键复刻」");
     }
     if (shouldBlockBuildOnScaffoldCheck(scaffold.checkOk, scaffold.checkSummary)) {
-      issues.push(`工程校验未通过：${scaffold.checkSummary ?? "请运行 hypit check 查看详情"}`);
+      issues.push(`制作项目未通过检查：${scaffold.checkSummary ?? "请重新一键复刻"}`);
     }
   }
 

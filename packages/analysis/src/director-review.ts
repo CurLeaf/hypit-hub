@@ -1,9 +1,16 @@
 import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { normalizeProductReferences } from "./product-reference.js";
+import { resolveTargetDurationSeconds } from "./target-duration.js";
 import { buildAdaptationScenes } from "./scenes-from-structure.js";
 import type { ScenePlan } from "./scene-plan.js";
-import type { AnalysisSessionView, DirectorReviewView, ViralInsightView } from "./shared.js";
+import type { AnalysisSessionView, BriefView, DirectorReviewView, TreatmentView, ViralInsightView } from "./shared.js";
+import {
+  resolveTierListMode,
+  TIER_LIST_DIRECTOR_HINT,
+  validateSpokenScriptTierLabels,
+} from "./tier-list-mode.js";
 
 const DIRECTOR_SUBDIR = ".hypit/analysis/director";
 const DIRECTOR_DRAFT_FILES = ["BRIEF.md", "TREATMENT.md", "scenes.json"] as const;
@@ -109,6 +116,28 @@ export function validateDirectorSceneAlignment(
   return issues;
 }
 
+export function validateDirectorScenesTierLabels(input: {
+  readonly session: AnalysisSessionView;
+  readonly insight: ViralInsightView;
+  readonly brief?: BriefView;
+  readonly treatment?: TreatmentView;
+  readonly baseScenes: readonly Pick<ScenePlan, "momentId" | "text" | "prompt">[];
+  readonly directorScenes: readonly DirectorSceneDraft[];
+}): readonly string[] {
+  const enabled = resolveTierListMode({
+    insight: input.insight,
+    ...(input.treatment === undefined ? {} : { treatment: input.treatment }),
+    ...(input.brief === undefined ? {} : { brief: input.brief }),
+    adaptationGoal: input.session.adaptationGoal,
+    scenes: input.baseScenes.map((scene) => ({
+      text: scene.text,
+      scenePromptHint: scene.prompt,
+    })),
+  });
+  if (!enabled || input.directorScenes.length === 0) return [];
+  return validateSpokenScriptTierLabels(...input.directorScenes.map((scene) => scene.text));
+}
+
 export function validateDirectorPackage(package_: DirectorPackage): readonly string[] {
   const issues: string[] = [];
   if (package_.briefMarkdown === undefined || package_.briefMarkdown.trim().length === 0) {
@@ -158,6 +187,9 @@ export async function ensureDirectorReviewRequest(input: {
       "## 目标",
       session.adaptationGoal?.trim() || "（请填写：新产品是什么、卖给谁、核心卖点）",
       "",
+      "## 成片时长",
+      `目标口播总时长约 ${resolveTargetDurationSeconds(session)} 秒（将拆分为多个 ≤15 秒的 H3 分镜；scenes.json 各段合计朗读时长应接近该目标）`,
+      "",
       "## 从参考片继承",
       `- 结构：${(session.segments ?? []).map((segment) => segment.label).join(" → ") || "按参考片口播与切镜"}`,
       `- Hook：${insight.hookAnalysis}`,
@@ -172,6 +204,13 @@ export async function ensureDirectorReviewRequest(input: {
   }
 
   if (!(await fileExists(treatmentPath))) {
+    const tierListNote = resolveTierListMode({
+      insight,
+      scenes: baseScenes.map((scene) => ({ text: scene.text, scenePromptHint: scene.prompt })),
+      adaptationGoal: session.adaptationGoal,
+    })
+      ? `\n\n## 排行榜 UI\n${TIER_LIST_DIRECTOR_HINT}`
+      : "";
     await writeFile(treatmentPath, [
       "# TREATMENT.md（导演审查稿）",
       "",
@@ -183,10 +222,18 @@ export async function ensureDirectorReviewRequest(input: {
       "",
       "## 口播与表演",
       "（请写明语速、人设、受众称呼、CTA）",
+      tierListNote,
     ].join("\n"), "utf8");
   }
 
   if (!(await fileExists(checklistPath))) {
+    const tierListChecklist = resolveTierListMode({
+      insight,
+      scenes: baseScenes.map((scene) => ({ text: scene.text, scenePromptHint: scene.prompt })),
+      adaptationGoal: session.adaptationGoal,
+    })
+      ? "\n- [ ] scenes.json 每段口播已明确念出五级标准词（夯、顶级、人上人、NPC、底边）"
+      : "";
     await writeFile(checklistPath, [
       "# 导演审查清单",
       "",
@@ -195,6 +242,7 @@ export async function ensureDirectorReviewRequest(input: {
       "- [ ] BRIEF.md 无占位符，产品信息完整",
       "- [ ] TREATMENT.md 切点与段落职能明确",
       "- [ ] scenes.json 各段口播已按新产品改写（非机械换词）",
+      tierListChecklist,
       "- [ ] 用户已确认可以制作配音",
     ].join("\n"), "utf8");
   }
@@ -207,7 +255,7 @@ export async function ensureDirectorReviewRequest(input: {
     "",
     "## 素材路径",
     `- 参考视频：${rel(session.workspaceRoot, session.videoPath)}`,
-    `- 产品参考图：${rel(session.workspaceRoot, session.productReferencePath)}`,
+    ...normalizeProductReferences(session).paths.map((path, index) => `- 产品参考图 ${index + 1}：${rel(session.workspaceRoot, path)}`),
     `- 转写：${rel(session.workspaceRoot, session.transcript?.path)}`,
     `- 深读归档：${rel(session.workspaceRoot, archive?.referenceDir)}`,
     `- ANALYSIS：${rel(session.workspaceRoot, archive?.analysisMarkdownPath)}`,
@@ -222,6 +270,7 @@ export async function ensureDirectorReviewRequest(input: {
     "在 Analysis UI 点击「导演审查通过」，或 POST `/__analysis/director/approve`。",
     "",
     `改编说明：${session.adaptationGoal ?? "（未填写）"}`,
+    `目标成片时长：约 ${resolveTargetDurationSeconds(session)} 秒（口播合计应接近该时长，H3 按 ≤15 秒分镜生成）`,
   ].join("\n"), "utf8");
 
   return {
@@ -238,7 +287,7 @@ export async function ensureDirectorReviewRequest(input: {
 
 export async function approveDirectorReview(
   workspaceRoot: string,
-  context?: { readonly session: AnalysisSessionView; readonly insight: ViralInsightView },
+  context?: { readonly session: AnalysisSessionView; readonly insight: ViralInsightView; readonly brief?: BriefView; readonly treatment?: TreatmentView },
 ): Promise<readonly string[]> {
   const package_ = await loadDirectorPackage(workspaceRoot);
   const issues = [...validateDirectorPackage(package_)];
@@ -246,6 +295,14 @@ export async function approveDirectorReview(
     const baseScenes = buildAdaptationScenes(context.session, context.insight);
     issues.push(...validateDirectorSceneAlignment(baseScenes, package_.scenes));
     issues.push(...validateDirectorScenesAdapted(baseScenes, package_.scenes));
+    issues.push(...validateDirectorScenesTierLabels({
+      session: context.session,
+      insight: context.insight,
+      ...(context.brief === undefined ? {} : { brief: context.brief }),
+      ...(context.treatment === undefined ? {} : { treatment: context.treatment }),
+      baseScenes,
+      directorScenes: package_.scenes,
+    }));
   }
   return issues;
 }

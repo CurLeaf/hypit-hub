@@ -14,14 +14,21 @@ import {
   pollBuildStatus,
   submitBuild,
 } from "./build-runner.js";
+import { syncAllBuildVideos, syncBuildVideos } from "./build-videos.js";
+import { listCompleteBuildVideos } from "./complete-build-videos.js";
 import {
   importUploadedFile,
   loadSavedAnalysis,
   runFullAnalysis,
 } from "./engine.js";
+import { writeReferenceArchive } from "./reference-archive.js";
 import { DEFAULT_VIDEO_NAME, materializeDefaultVideo, resolveDefaultVideoUrl } from "./default-video.js";
 import { loadChatGateway } from "./llm.js";
-import type { AnalysisConfigView, AnalysisSessionView, DirectorReviewView } from "./shared.js";
+import type { AnalysisConfigView, AnalysisSessionView, DirectorReviewView, GeneratedVideoView } from "./shared.js";
+import {
+  clampTargetDurationSeconds,
+  defaultTargetDurationSeconds,
+} from "./target-duration.js";
 import {
   approveDirectorReview,
   canStartAdaptation,
@@ -35,20 +42,32 @@ import {
   runDirectorAgent,
 } from "./director-agent.js";
 import { prepareProductAdaptation, resetAdaptationArtifacts } from "./prepare-adaptation.js";
-import { shouldInvalidateForGoalChange } from "./product-adaptation-invalidation.js";
+import { shouldInvalidateForDurationChange, shouldInvalidateForGoalChange } from "./product-adaptation-invalidation.js";
+import {
+  clearedProductReferenceSessionFields,
+  hasProductReference,
+  maxProductReferenceImages,
+  normalizeProductReferences,
+  productReferenceSessionUpdate,
+  referencesChanged,
+} from "./product-reference.js";
 import { assertReplicationReady, checkReplicationReadiness } from "./replica-readiness.js";
 import {
   clearWorkflowState,
+  generateBrief,
   generateInsight,
+  generateTreatment,
   loadWorkflowState,
   enrichSessionWithSavedInsight,
   mergeWorkflowState,
   refreshScaffoldCheck,
   runFullReplication,
   saveWorkflowState,
+  scaffoldProject,
   workflowStateFromSession,
 } from "./workflow.js";
-import { loadWorkspaceEnv } from "./workspace-env.js";
+import { loadHypitAnalysisEnv } from "./workspace-env.js";
+import { openVideoRegistry } from "./video-registry.js";
 
 export type AnalysisPluginOptions = {
   readonly workspaceRoot: string;
@@ -101,9 +120,51 @@ async function readBody(request: import("node:http").IncomingMessage): Promise<B
   return Buffer.concat(chunks);
 }
 
+function videoArtifactSnapshot(
+  session: AnalysisSessionView,
+  registry: ReturnType<typeof openVideoRegistry>,
+  completeVideos: readonly GeneratedVideoView[],
+): AnalysisSessionView {
+  const buildId = session.build?.id;
+  const currentBuildVideos = buildId === undefined || buildId.length === 0
+    ? []
+    : completeVideos.filter((video) => video.buildId === buildId);
+  const nextBuild = session.build === undefined
+    ? session.build
+    : {
+      ...session.build,
+      generatedVideos: currentBuildVideos,
+      generatedVideoCount: currentBuildVideos.length,
+    };
+  const registryStats = registry.stats();
+  return {
+    ...session,
+    ...(nextBuild === undefined ? {} : { build: nextBuild }),
+    allGeneratedVideos: completeVideos,
+    videoStats: {
+      totalVideos: completeVideos.length,
+      totalBuilds: registryStats.totalBuilds,
+    },
+  };
+}
+
+async function attachVideoArtifacts(
+  session: AnalysisSessionView,
+  workspaceRoot: string,
+  options?: { readonly force?: boolean; readonly includeGeneration?: boolean },
+): Promise<AnalysisSessionView> {
+  const registry = openVideoRegistry(workspaceRoot);
+  await syncAllBuildVideos(workspaceRoot, registry, options);
+  const completeVideos = await listCompleteBuildVideos(workspaceRoot, {
+    includeGeneration: options?.includeGeneration !== false,
+  });
+  const normalized = session.workspaceRoot === workspaceRoot ? session : { ...session, workspaceRoot };
+  return videoArtifactSnapshot(normalized, registry, completeVideos);
+}
+
 async function mergeWorkflow(session: AnalysisSessionView): Promise<AnalysisSessionView> {
   const workflow = await loadWorkflowState(session.workspaceRoot);
-  let merged = enrichSessionWithSavedInsight(mergeWorkflowState(session, workflow));
+  let merged = await enrichSessionWithSavedInsight(mergeWorkflowState(session, workflow));
   if (merged.scaffold?.checkOk === false) {
     const refreshed = await refreshScaffoldCheck(merged.workspaceRoot, merged.scaffold);
     if (refreshed.checkOk !== merged.scaffold.checkOk || refreshed.checkSummary !== merged.scaffold.checkSummary) {
@@ -111,12 +172,11 @@ async function mergeWorkflow(session: AnalysisSessionView): Promise<AnalysisSess
       await saveWorkflowState(merged.workspaceRoot, workflowStateFromSession(merged));
     }
   }
-  return merged;
+  return await attachVideoArtifacts(merged, session.workspaceRoot);
 }
 
 export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
-  void loadWorkspaceEnv(distributionRoot);
-  void loadWorkspaceEnv(options.workspaceRoot);
+  void loadHypitAnalysisEnv(distributionRoot, options.workspaceRoot);
   let session: AnalysisSessionView = { workspaceRoot: options.workspaceRoot };
   let jobRunning = false;
   let workflowRunning = false;
@@ -195,6 +255,8 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
     const issues = await approveDirectorReview(options.workspaceRoot, {
       session,
       insight: session.insight,
+      ...(session.brief === undefined ? {} : { brief: session.brief }),
+      ...(session.treatment === undefined ? {} : { treatment: session.treatment }),
     });
     if (issues.length > 0) {
       throw new Error(issues.join("；"));
@@ -220,7 +282,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
     const agentConfig = resolveDirectorAgentConfig();
     if (!force && !agentConfig.auto) return;
     if (!agentConfig.available) return;
-    if (session.productReferencePath === undefined || session.analysisPath === undefined) return;
+    if (!hasProductReference(session) || session.analysisPath === undefined) return;
     if (session.insight === undefined) return;
     if (session.directorReview?.status === "approved") return;
     if (!force && (session.adaptationGoal?.trim().length ?? 0) === 0) return;
@@ -345,13 +407,41 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
     await resetAdaptationArtifacts(options.workspaceRoot);
   }
 
+  async function applyProductReferenceUpdate(
+    current: AnalysisSessionView,
+    newPaths: readonly string[],
+    newNames: readonly string[],
+  ): Promise<{ readonly session: AnalysisSessionView; readonly referenceChanged: boolean }> {
+    const { paths: existingPaths } = normalizeProductReferences(current);
+    const referenceChanged = referencesChanged(existingPaths, newPaths);
+    if (referenceChanged) {
+      await invalidateProductAdaptationState();
+    }
+    const { adaptation: _adaptation, scaffold: _scaffold, build: _build, workflowJob: _workflowJob, ...retained } = current;
+    const fields = newPaths.length === 0
+      ? clearedProductReferenceSessionFields()
+      : productReferenceSessionUpdate(newPaths, newNames);
+    return {
+      referenceChanged,
+      session: {
+        ...(referenceChanged ? retained : current),
+        ...fields,
+        videoAroll: current.videoAroll ?? true,
+        ...(referenceChanged ? clearedProductAdaptationSession() : {}),
+      },
+    };
+  }
+
   async function persistWorkflow(): Promise<void> {
     await saveWorkflowState(options.workspaceRoot, {
       ...(session.videoPath === undefined ? {} : { videoPath: session.videoPath }),
       ...(session.videoUrl === undefined ? {} : { videoUrl: session.videoUrl }),
       ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
       ...(session.productReferenceName === undefined ? {} : { productReferenceName: session.productReferenceName }),
+      ...(session.productReferencePaths === undefined ? {} : { productReferencePaths: session.productReferencePaths }),
+      ...(session.productReferenceNames === undefined ? {} : { productReferenceNames: session.productReferenceNames }),
       ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
+      ...(session.targetDurationSeconds === undefined ? {} : { targetDurationSeconds: session.targetDurationSeconds }),
       ...(session.insight === undefined ? {} : { insight: session.insight }),
       ...(session.brief === undefined ? {} : { brief: session.brief }),
       ...(session.treatment === undefined ? {} : { treatment: session.treatment }),
@@ -365,7 +455,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
   async function requestDirectorReview(): Promise<void> {
     if (session.analysisPath === undefined || session.insight === undefined) return;
-    if (session.productReferencePath === undefined) return;
+    if (!hasProductReference(session)) return;
     const directorReview = await ensureDirectorReviewRequest({
       session,
       insight: session.insight,
@@ -376,7 +466,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
   async function scheduleAdaptation(goal?: string): Promise<void> {
     const effectiveGoal = goal ?? session.adaptationGoal;
-    if (session.productReferencePath === undefined || session.analysisPath === undefined) return;
+    if (!hasProductReference(session) || session.analysisPath === undefined) return;
     if (!canStartAdaptation(session.directorReview)) return;
     if (adaptationRunning) return;
     adaptationRunning = true;
@@ -445,6 +535,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
               status: status.status === "complete" ? "complete" : status.status === "error" ? "error" : "building",
               phase: status.phase,
               ...(status.error === undefined ? {} : { error: status.error }),
+              ...(session.build?.planSummary === undefined ? {} : { planSummary: session.build.planSummary }),
               ...(session.build?.outputVideoPath === undefined ? {} : { outputVideoPath: session.build.outputVideoPath }),
             },
             workflowJob: {
@@ -480,6 +571,14 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             if (buildPoller !== undefined) clearInterval(buildPoller);
             buildPoller = undefined;
           }
+          const registry = openVideoRegistry(options.workspaceRoot);
+          await syncBuildVideos(
+            options.workspaceRoot,
+            buildId,
+            registry,
+            status.status === "complete" ? "complete" : status.status === "error" ? "failed" : "building",
+          );
+          session = await attachVideoArtifacts(session, options.workspaceRoot, { force: true });
           await persistWorkflow();
         } catch {
           // keep polling
@@ -503,7 +602,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "GET" && url.pathname === "/__analysis/session") {
             session = await mergeWorkflow(session);
-            if (session.productReferencePath !== undefined
+            if (hasProductReference(session)
               && session.insight !== undefined
               && session.analysisPath !== undefined
               && session.directorReview === undefined) {
@@ -575,7 +674,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                   },
                 };
                 await persistWorkflow();
-                if (session.productReferencePath !== undefined) {
+                if (hasProductReference(session)) {
                   await requestDirectorReview();
                 }
               } catch (error) {
@@ -606,11 +705,29 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
           }
 
           if (request.method === "POST" && url.pathname === "/__analysis/adaptation-goal") {
-            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as { goal?: string };
+            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as {
+              goal?: string;
+              targetDurationSeconds?: number;
+            };
+            const goalProvided = body.goal !== undefined;
+            const durationProvided = body.targetDurationSeconds !== undefined;
             const previousGoal = session.adaptationGoal?.trim() ?? "";
-            const nextGoal = body.goal?.trim() ?? "";
-            session = { ...session, adaptationGoal: nextGoal || undefined };
-            if (shouldInvalidateForGoalChange(session, previousGoal, nextGoal)) {
+            const nextGoalText = goalProvided ? (body.goal?.trim() ?? "") : previousGoal;
+            const previousDuration = session.targetDurationSeconds;
+            const nextDuration = durationProvided
+              ? clampTargetDurationSeconds(
+                body.targetDurationSeconds!,
+                defaultTargetDurationSeconds(session),
+              )
+              : previousDuration;
+            session = {
+              ...session,
+              ...(goalProvided ? { adaptationGoal: nextGoalText || undefined } : {}),
+              ...(durationProvided ? { targetDurationSeconds: nextDuration } : {}),
+            };
+            const goalChanged = goalProvided && shouldInvalidateForGoalChange(session, previousGoal, nextGoalText);
+            const durationChanged = durationProvided && shouldInvalidateForDurationChange(session, previousDuration, nextDuration);
+            if (goalChanged || durationChanged) {
               await invalidateProductAdaptationState();
               session = { ...session, ...clearedProductAdaptationSession() };
               await persistWorkflow();
@@ -625,7 +742,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
           }
 
           if (request.method === "POST" && url.pathname === "/__analysis/director/approve") {
-            if (session.productReferencePath === undefined || session.analysisPath === undefined) {
+            if (!hasProductReference(session) || session.analysisPath === undefined) {
               throw new Error("请先完成参考视频分析并上传参考图");
             }
             await finalizeDirectorApproval();
@@ -634,7 +751,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
           }
 
           if (request.method === "POST" && url.pathname === "/__analysis/director/run-agent") {
-            if (session.productReferencePath === undefined || session.analysisPath === undefined) {
+            if (!hasProductReference(session) || session.analysisPath === undefined) {
               throw new Error("请先完成参考视频分析并上传参考图");
             }
             if (session.insight === undefined) throw new Error("请先完成参考视频分析");
@@ -677,7 +794,20 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             if (!canStartAdaptation(session.directorReview)) {
               throw new Error("导演审查尚未通过。请先在 Cursor 编辑 .hypit/analysis/director/ 并点击「导演审查通过」。");
             }
-            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as { goal?: string };
+            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as {
+              goal?: string;
+              targetDurationSeconds?: number;
+            };
+            if (body.targetDurationSeconds !== undefined) {
+              session = {
+                ...session,
+                targetDurationSeconds: clampTargetDurationSeconds(
+                  body.targetDurationSeconds,
+                  defaultTargetDurationSeconds(session),
+                ),
+              };
+              await persistWorkflow();
+            }
             json(response, 202, { ...session, adaptation: { status: "running", phase: "准备改编配音…" } });
             void scheduleAdaptation(body.goal);
             return;
@@ -693,15 +823,25 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             const body = JSON.parse((await readBody(request)).toString("utf8")) as {
               replacements?: string;
               goal?: string;
+              autoBuild?: boolean;
               speechMode?: "reference" | "tts";
               formatId?: string;
               videoAroll?: boolean;
+              targetDurationSeconds?: number;
             };
             workflowRunning = true;
             const workflowId = `workflow-${Date.now()}`;
             session = {
               ...session,
               videoAroll: body.videoAroll ?? session.videoAroll ?? true,
+              ...(body.targetDurationSeconds === undefined
+                ? {}
+                : {
+                  targetDurationSeconds: clampTargetDurationSeconds(
+                    body.targetDurationSeconds,
+                    defaultTargetDurationSeconds(session),
+                  ),
+                }),
               workflowJob: { id: workflowId, status: "running", phase: "准备复刻…" },
             };
             json(response, 202, session);
@@ -717,7 +857,9 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                   ...(body.goal === undefined ? {} : { goal: body.goal }),
                   ...(body.speechMode === undefined ? {} : { speechMode: body.speechMode }),
                   ...(body.formatId === undefined ? {} : { formatId: body.formatId }),
-                  ...(session.productReferencePath === undefined ? {} : { productReferencePath: session.productReferencePath }),
+                  ...(normalizeProductReferences(session).paths.length === 0
+                    ? {}
+                    : { productReferencePaths: normalizeProductReferences(session).paths }),
                   ...(videoAroll === undefined ? {} : { videoAroll }),
                   onPhase: (phase) => {
                     session = {
@@ -726,13 +868,39 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                     };
                   },
                 });
-                session = {
-                  ...session,
-                  ...workflow,
-                  ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }),
-                  workflowJob: { id: workflowId, status: "complete", phase: "工程已生成，可开始生成视频" },
-                };
+                session = { ...session, ...workflow, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
                 await persistWorkflow();
+
+                if (body.autoBuild !== false) {
+                  session = {
+                    ...session,
+                    workflowJob: { id: workflowId, status: "running", phase: "检查 Runtime…" },
+                    build: { status: "planning", phase: "准备生成…" },
+                  };
+                  await ensureRuntimeUp(options.workspaceRoot, runtimePath);
+                  const runPath = workflow.scaffold?.runPath;
+                  if (runPath === undefined) throw new Error("工程脚手架失败");
+                  session = {
+                    ...session,
+                    workflowJob: { id: workflowId, status: "running", phase: "提交生成…" },
+                    build: { status: "building", phase: "提交生成…" },
+                  };
+                  const buildId = await submitBuild(options.workspaceRoot, runPath, runtimePath);
+                  const outputPath = resolve(workflow.scaffold!.productionDir, "output", "final.mp4");
+                  session = {
+                    ...session,
+                    build: { id: buildId, status: "building", phase: "生成中…" },
+                    workflowJob: { id: workflowId, status: "running", phase: "生成视频中…" },
+                  };
+                  await persistWorkflow();
+                  startBuildPolling(buildId, runtimePath, outputPath);
+                } else {
+                  session = {
+                    ...session,
+                    workflowJob: { id: workflowId, status: "complete", phase: "方案已生成，可手动 build" },
+                  };
+                  await persistWorkflow();
+                }
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 const nextBuild = session.build?.status === "building" || session.build?.status === "planning"
@@ -748,6 +916,85 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
                 workflowRunning = false;
               }
             })();
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/interpret") {
+            if (session.analysisPath === undefined) throw new Error("请先完成媒体分析");
+            const runtimePath = await resolveRuntime();
+            const insight = await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            session = { ...session, insight };
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/brief") {
+            const body = JSON.parse((await readBody(request)).toString("utf8")) as { replacements?: string; goal?: string };
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const brief = await generateBrief({
+              session,
+              insight,
+              ...(body.replacements === undefined ? {} : { replacements: body.replacements }),
+              ...(body.goal === undefined ? {} : { goal: body.goal }),
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
+            session = { ...session, insight, brief };
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/treatment") {
+            if (session.brief === undefined) throw new Error("请先生成 Brief");
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const treatment = await generateTreatment({
+              session,
+              insight,
+              brief: session.brief,
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
+            session = { ...session, insight, treatment };
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/scaffold") {
+            const body = JSON.parse((await readBody(request)).toString("utf8") || "{}") as {
+              speechMode?: "reference" | "tts";
+              formatId?: string;
+            };
+            const runtimePath = await resolveRuntime();
+            const insight = session.insight ?? await generateInsight({ session, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const brief = session.brief ?? await generateBrief({ session, insight, ...(runtimePath === undefined ? {} : { runtimePath }) });
+            const treatment = session.treatment ?? await generateTreatment({
+              session,
+              insight,
+              brief,
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+            });
+            const scaffold = await scaffoldProject({
+              session,
+              insight,
+              brief,
+              treatment,
+              distributionRoot,
+              ...(body.formatId === undefined ? {} : { formatId: body.formatId }),
+              ...(runtimePath === undefined ? {} : { runtimePath }),
+              ...(body.speechMode === undefined ? {} : { speechMode: body.speechMode }),
+              ...(normalizeProductReferences(session).paths.length === 0
+                ? {}
+                : { productReferencePaths: normalizeProductReferences(session).paths }),
+              ...(session.videoAroll === undefined ? {} : { videoAroll: session.videoAroll }),
+              ...(session.adaptationGoal === undefined ? {} : { goal: session.adaptationGoal }),
+              ...(session.adaptation === undefined ? {} : { preparedAdaptation: session.adaptation }),
+            });
+            session = { ...session, insight, brief, treatment, scaffold };
+            await persistWorkflow();
+            json(response, 200, session);
             return;
           }
 
@@ -795,6 +1042,17 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             return;
           }
 
+          if (request.method === "POST" && url.pathname === "/__analysis/reference-archive") {
+            const analysisPath = session.analysisPath;
+            if (analysisPath === undefined) throw new Error("请先完成媒体分析");
+            const archive = await writeReferenceArchive(session);
+            session = { ...session, referenceArchive: archive };
+            const raw = JSON.parse(await readFile(analysisPath, "utf8")) as Record<string, unknown>;
+            await writeFile(analysisPath, `${JSON.stringify({ ...raw, referenceArchive: archive }, null, 2)}\n`, "utf8");
+            json(response, 200, session);
+            return;
+          }
+
           if (request.method === "GET" && url.pathname === "/__analysis/document") {
             const target = url.searchParams.get("path");
             if (target === null || target.length === 0) throw new Error("缺少 path");
@@ -837,32 +1095,66 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
 
           if (request.method === "POST" && url.pathname === "/__analysis/upload-reference") {
             const raw = await readBody(request);
-            const upload = parseMultipartUpload(request.headers["content-type"], raw, "reference.jpg");
-            const fileName = upload.fileName;
-            const fileBytes = upload.fileBytes;
-            if (fileBytes === undefined || fileBytes.length === 0) throw new Error("未收到参考图文件");
-            const ext = resolveImageExtension(fileName, upload.contentType, fileBytes);
-            const staging = resolve(options.workspaceRoot, ".hypit", "analysis", "uploads", `reference-${Date.now()}${ext}`);
-            await mkdir(dirname(staging), { recursive: true });
-            await writeFile(staging, fileBytes);
-            const target = await importUploadedFile(staging, options.workspaceRoot, fileName);
-            const referenceChanged = session.productReferencePath !== target;
-            if (referenceChanged) {
-              await invalidateProductAdaptationState();
+            const upload = parseMultipartReferenceUpload(request.headers["content-type"], raw, "reference.jpg");
+            if (upload.files.length === 0) throw new Error("未收到参考图文件");
+            const limit = maxProductReferenceImages(session);
+            const { paths: existingPaths, names: existingNames } = normalizeProductReferences(session);
+            const basePaths = upload.mode === "append" ? [...existingPaths] : [];
+            const baseNames = upload.mode === "append" ? [...existingNames] : [];
+            const newPaths = [...basePaths];
+            const newNames = [...baseNames];
+            for (const [index, file] of upload.files.entries()) {
+              const ext = resolveImageExtension(file.fileName, file.contentType, file.fileBytes);
+              const staging = resolve(
+                options.workspaceRoot,
+                ".hypit",
+                "analysis",
+                "uploads",
+                `reference-${Date.now()}-${index}${ext}`,
+              );
+              await mkdir(dirname(staging), { recursive: true });
+              await writeFile(staging, file.fileBytes);
+              const target = await importUploadedFile(staging, options.workspaceRoot, file.fileName);
+              newPaths.push(target);
+              newNames.push(basename(target));
             }
-            const { adaptation: _adaptation, scaffold: _scaffold, build: _build, workflowJob: _workflowJob, ...retained } = session;
-            session = {
-              ...(referenceChanged ? retained : session),
-              productReferencePath: target,
-              productReferenceName: basename(target),
-              videoAroll: session.videoAroll ?? true,
-              ...(referenceChanged ? clearedProductAdaptationSession() : {}),
-            };
+            if (newPaths.length > limit) {
+              throw new Error(`参考图最多上传 ${limit} 张`);
+            }
+            const update = await applyProductReferenceUpdate(session, newPaths, newNames);
+            session = update.session;
             await persistWorkflow();
             json(response, 200, session);
-            if (referenceChanged && session.analysisPath !== undefined && session.insight !== undefined) {
+            if (update.referenceChanged && newPaths.length > 0
+              && session.analysisPath !== undefined && session.insight !== undefined) {
               void requestDirectorReview();
             }
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/remove-reference") {
+            const body = JSON.parse((await readBody(request)).toString("utf8")) as { index?: number };
+            const index = body.index;
+            if (index === undefined || !Number.isInteger(index) || index < 0) throw new Error("缺少有效的参考图序号");
+            const { paths: existingPaths, names: existingNames } = normalizeProductReferences(session);
+            if (index >= existingPaths.length) throw new Error("参考图不存在");
+            const newPaths = existingPaths.filter((_, itemIndex) => itemIndex !== index);
+            const newNames = existingNames.filter((_, itemIndex) => itemIndex !== index);
+            const update = await applyProductReferenceUpdate(session, newPaths, newNames);
+            session = update.session;
+            await persistWorkflow();
+            json(response, 200, session);
+            return;
+          }
+
+          if (request.method === "POST" && url.pathname === "/__analysis/clear-references") {
+            const { paths: existingPaths } = normalizeProductReferences(session);
+            if (existingPaths.length > 0) {
+              const update = await applyProductReferenceUpdate(session, [], []);
+              session = update.session;
+              await persistWorkflow();
+            }
+            json(response, 200, session);
             return;
           }
 
@@ -892,6 +1184,15 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
             return;
           }
 
+          if (request.method === "GET" && url.pathname === "/__analysis/restore") {
+            const saved = await loadSavedAnalysis(options.workspaceRoot);
+            const runtimePath = await resolveRuntime();
+            if (saved !== undefined) session = { ...saved, ...(runtimePath === undefined ? {} : { runtimeProfile: runtimePath }) };
+            session = await mergeWorkflow(session);
+            json(response, 200, session);
+            return;
+          }
+
           json(response, 404, { error: "unknown analysis route" });
         } catch (error) {
           json(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -899,8 +1200,7 @@ export function analysisPlugin(options: AnalysisPluginOptions): Plugin {
       });
     },
     async buildStart(): Promise<void> {
-      await loadWorkspaceEnv(distributionRoot);
-      await loadWorkspaceEnv(options.workspaceRoot);
+      await loadHypitAnalysisEnv(distributionRoot, options.workspaceRoot);
       const saved = await loadSavedAnalysis(options.workspaceRoot);
       if (saved !== undefined) {
         session = await mergeWorkflow(saved);
@@ -945,35 +1245,57 @@ function parseMultipartBoundary(contentType: string | undefined): string {
   return boundaryRaw.trim().replace(/^"|"$/u, "");
 }
 
-function parseMultipartUpload(
+type MultipartFilePart = {
+  readonly fileName: string;
+  readonly fileBytes: Buffer;
+  readonly contentType?: string;
+};
+
+function parseMultipartReferenceUpload(
   contentType: string | undefined,
   raw: Buffer,
   defaultFileName: string,
-): { fileName: string; fileBytes?: Buffer; contentType?: string } {
+): { readonly mode: "append" | "replace"; readonly files: readonly MultipartFilePart[] } {
   const boundary = parseMultipartBoundary(contentType);
   const marker = Buffer.from(`--${boundary}`);
   const parts = splitMultipart(raw, marker);
-  let fileName = defaultFileName;
-  let fileBytes: Buffer | undefined;
-  let mimeType: string | undefined;
+  let mode: "append" | "replace" = "replace";
+  const files: MultipartFilePart[] = [];
   for (const part of parts) {
     const headerEnd = part.indexOf("\r\n\r\n");
     if (headerEnd < 0) continue;
     const headers = part.slice(0, headerEnd).toString("utf8");
     const content = part.subarray(headerEnd + 4);
     const trimmed = trimMultipartContent(content);
+    const fieldMatch = /name="([^"]+)"/u.exec(headers);
+    const fieldName = fieldMatch?.[1];
+    if (fieldName === "mode") {
+      if (trimmed.toString("utf8").trim() === "append") mode = "append";
+      continue;
+    }
+    if (fieldName !== "file") continue;
     const nameMatch = /filename="([^"]+)"/u.exec(headers);
     const typeMatch = /Content-Type:\s*([^\r\n]+)/iu.exec(headers);
-    if (headers.includes("name=\"file\"")) {
-      fileName = nameMatch?.[1] ?? fileName;
-      fileBytes = trimmed;
-      mimeType = typeMatch?.[1]?.trim().toLowerCase();
-    }
+    if (trimmed.length === 0) continue;
+    files.push({
+      fileName: nameMatch?.[1] ?? defaultFileName,
+      fileBytes: trimmed,
+      ...(typeMatch?.[1] === undefined ? {} : { contentType: typeMatch[1].trim().toLowerCase() }),
+    });
   }
+  return { mode, files };
+}
+
+function parseMultipartUpload(
+  contentType: string | undefined,
+  raw: Buffer,
+  defaultFileName: string,
+): { fileName: string; fileBytes?: Buffer; contentType?: string } {
+  const upload = parseMultipartReferenceUpload(contentType, raw, defaultFileName);
+  const file = upload.files[0];
   return {
-    fileName,
-    ...(fileBytes === undefined ? {} : { fileBytes }),
-    ...(mimeType === undefined ? {} : { contentType: mimeType }),
+    fileName: file?.fileName ?? defaultFileName,
+    ...(file === undefined ? {} : { fileBytes: file.fileBytes, contentType: file.contentType }),
   };
 }
 

@@ -103,7 +103,21 @@
   text-template.h3-ugc-replica-v1.block.hygiene {
     kind: fixed;
     order: 80;
-    text: "Keep lighting, skin, product texture, and motion photoreal and stable within the generated clip. Add no subtitles, captions, labels, logos, UI text, floating words, or other readable on-screen text.";
+    text: "Keep lighting, skin, product texture, and motion photoreal and stable within the generated clip. UI overlays, stickers, ranking graphics, and readable on-screen text are allowed when described below.";
+  }
+
+  text-template.h3-ugc-replica-v1.block.tier-list {
+    kind: slot;
+    order: 82;
+    slot: tier-list;
+    optional: true;
+    label: "Tier list overlay:";
+  }
+
+  text-template.h3-ugc-replica-v1.block.captions {
+    kind: fixed;
+    order: 85;
+    text: "ON-SCREEN CAPTIONS: burn subtitles directly into the picture, synchronized phrase-by-phrase with the spoken script. Use bottom-center placement for vertical 9:16 framing (roughly 75–82% from top), white bold sans-serif text with dark stroke or shadow for readability on any background, up to two lines, no karaoke highlight. Display the exact words from the spoken script as they are spoken; do not paraphrase, omit, or add caption text beyond the script.";
   }
 
   text-template.h3-ugc-replica-v1.block.dialogue {

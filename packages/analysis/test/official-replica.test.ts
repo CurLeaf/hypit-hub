@@ -6,11 +6,14 @@ import { isDefaultScenePrompt, validateOfficialSvml } from "../src/official-repl
 function validTimelineH3Svml(takeCount: number): string {
   const takes: string[] = [];
   for (let index = 1; index <= takeCount; index += 1) {
-    const imageRef = index === 1 ? "product-reference" : `shot_${index - 1}-last.image`;
+    const imageRefs = index === 1
+      ? `      <h3:Reference image={product-reference}/>`
+      : `      <h3:Reference image={product-reference}/>
+      <h3:Reference image={shot_${index - 1}-last.image}/>`;
     takes.push(`
     <text:Render id="shot_${index}-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}/>
     <h3:ReferenceVideo id="shot_${index}-take" prompt={shot_${index}-prompt} duration="15" resolution="768P" aspect-ratio="9:16">
-      <h3:Reference image={${imageRef}}/>
+${imageRefs}
       <h3:Reference audio={presenter-voice}/>
     </h3:ReferenceVideo>`);
     if (index < takeCount) {
@@ -71,6 +74,8 @@ test("validateOfficialSvml rejects multi-shot H3 without last-frame chain", () =
       <h3:Reference image={product-reference}/>
       <h3:Reference audio={presenter-voice}/>
     </h3:ReferenceVideo>
+    <pipeline:ExtractFrame id="shot_1-last" source={shot_1-take.video}
+      video="primary-moving" at="last"/>
     <text:Render id="shot_2-prompt" template={h3-kit.h3-ugc-replica-v1} recipe={recipes.speaker.host}/>
     <h3:ReferenceVideo id="shot_2-take" prompt={shot_2-prompt} duration="6" resolution="768P" aspect-ratio="9:16">
       <h3:Reference image={product-reference}/>
@@ -80,6 +85,15 @@ test("validateOfficialSvml rejects multi-shot H3 without last-frame chain", () =
   const report = validateOfficialSvml(svml, { videoAroll: true, requireProductReference: true });
   assert.equal(report.ok, false);
   assert.ok(report.checks.some((check) => check.id === "h3-frame-chain" && !check.ok));
+});
+
+test("validateOfficialSvml rejects caption-fine overlay on H3 A-roll path", () => {
+  const svml = `${validTimelineH3Svml(1)}
+    <import as="caption-fine" from="@hypit/caption-fine@1"/>
+    <caption-fine:Track id="captions" document={story.caption} timeline={speech.timeline}/>`;
+  const report = validateOfficialSvml(svml, { videoAroll: true, requireProductReference: true });
+  assert.equal(report.ok, false);
+  assert.ok(report.checks.some((check) => check.id === "h3-burned-captions" && !check.ok));
 });
 
 test("validateOfficialSvml rejects legacy reference-audio path", () => {

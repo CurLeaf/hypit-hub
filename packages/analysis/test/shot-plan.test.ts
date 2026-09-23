@@ -66,3 +66,15 @@ test("groupScenesIntoShots merges dialogue by timeline instead of per cut", () =
   assert.ok(shots[0]?.text.includes("叠穿套装"));
   assert.ok(shots[1]?.text.includes("别犹豫"));
 });
+
+test("groupScenesIntoShots merges dialogue without literal separators", () => {
+  const scenes = [
+    scene(0, 10, "第一段口播内容"),
+    scene(10, 20, "第二段口播内容"),
+  ];
+  const shots = groupScenesIntoShots(scenes, 10);
+  assert.equal(shots.length, 1);
+  assert.doesNotMatch(shots[0]?.text ?? "", /\|\|/u);
+  assert.ok(shots[0]?.text.includes("第一段口播内容"));
+  assert.ok(shots[0]?.text.includes("第二段口播内容"));
+});

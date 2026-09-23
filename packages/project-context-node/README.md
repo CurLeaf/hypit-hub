@@ -6,9 +6,12 @@ It does not load Providers, install programs, inspect credentials or select serv
 
 1. `resolveProjectRoot({ workspaceRoot?, cwd? })` uses the explicit Workspace, otherwise the nearest
    `package.json` above cwd, otherwise cwd itself. Source and Run filenames do not choose the project.
-2. `findRuntimeProfile(projectRoot)` reads only that project's `.hypit/runtime` file and resolves its
+2. `resolveCreativeProjectRoot({ workspaceRoot?, cwd?, distributionRoot? })` applies the same resolution,
+   then redirects a Hypit source checkout away from `examples/` and the repository root into
+   `projects/<slug>/`, scaffolding `package.json`, `hypit.runtime.json` and a Runtime selection when needed.
+3. `findRuntimeProfile(projectRoot)` reads only that project's `.hypit/runtime` file and resolves its
    path relative to the project. An entrypoint's explicit `--runtime` overrides this read for that invocation.
-3. The selected Runtime implementation interprets the Profile, including `dataRoot`, Credentials,
+4. The selected Runtime implementation interprets the Profile, including `dataRoot`, Credentials,
    Providers and capability bindings. This package does not interpret its contents.
 
 `selectRuntimeProfile(projectRoot, profile)` writes the explicit choice; `clearRuntimeProfile` removes

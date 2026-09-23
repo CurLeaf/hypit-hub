@@ -55,12 +55,22 @@ export type PlannedExactModelMediaReference = {
   readonly available: boolean;
 };
 
+export type PlannedExactModelTextReference = {
+  readonly port: string;
+  readonly record: string;
+  readonly sourceStep?: string;
+  /** The Text already exists in this disposable planning view. */
+  readonly available: boolean;
+};
+
 export type PlannedExactModelRequest = {
   readonly model: string;
   /** Every authored scalar and Text port value, plus media values whose Blobs already exist. */
   readonly ports: GenerationRequestDraft["ports"];
   /** Declared media edges whose files will be produced by an upstream Build step. */
   readonly pendingMedia: readonly PlannedExactModelMediaReference[];
+  /** Declared Text edges whose values will be produced by an upstream Build step. */
+  readonly pendingText: readonly PlannedExactModelTextReference[];
   /** True only when the executable Need already exists and has passed full request validation. */
   readonly complete: boolean;
 };
@@ -272,6 +282,7 @@ export function plannedExactModelRequest(
       model: endpoint.ports.model,
       ports: structuredClone((knownNeed.constraints as unknown as GenerationRequestDraft).ports),
       pendingMedia: [],
+      pendingText: [],
       complete: true,
     };
   }
@@ -287,6 +298,7 @@ export function plannedExactModelRequest(
   if (finalDraft === undefined) return undefined;
 
   const pendingMedia: PlannedExactModelMediaReference[] = [];
+  const pendingText: PlannedExactModelTextReference[] = [];
   const visiting = new Set<string>();
   const rebuildDraft = (recordId: string): GenerationRequestDraft => {
     if (visiting.has(recordId)) throw new Error(`${endpoint.ports.model} request assembly contains a cycle at ${recordId}`);
@@ -308,14 +320,27 @@ export function plannedExactModelRequest(
         .find((candidate) => sameReference(step.producer, candidate.producer));
       if (textBinding !== undefined) {
         const textId = step.inputs.text;
-        const text = textId === undefined ? undefined : records.get(textId);
-        if (text === undefined) throw new Error(`${step.id} has no authored Text input`);
-        return bindGenerationText(
-          endpoint.ports,
-          draft,
-          textBinding.port,
-          inlineValue<Text>(text.value, `${step.id} Text`),
-        );
+        if (textId === undefined) throw new Error(`${step.id} has no authored Text input`);
+        const text = records.get(textId);
+        if (text !== undefined) {
+          return bindGenerationText(
+            endpoint.ports,
+            draft,
+            textBinding.port,
+            inlineValue<Text>(text.value, `${step.id} Text`),
+          );
+        }
+        const sourceStep = producedBy.get(textId);
+        if (sourceStep !== undefined) {
+          pendingText.push({
+            port: textBinding.port,
+            record: textId,
+            sourceStep: sourceStep.id,
+            available: false,
+          });
+          return draft;
+        }
+        throw new Error(`${step.id} has no authored Text input`);
       }
 
       const mediaBinding = Object.values(endpoint.mediaBindings)
@@ -358,6 +383,7 @@ export function plannedExactModelRequest(
     model: endpoint.ports.model,
     ports: structuredClone(draft.ports),
     pendingMedia,
+    pendingText,
     complete: false,
   };
 }
@@ -375,12 +401,19 @@ function exactModelSpecification(planned: PlannedExactModelRequest): PlannedNeed
   }
   return {
     constraints: canonicalize({ ports }),
-    pendingInputs: planned.pendingMedia.map((resource) => ({
-      input: resource.port,
-      record: resource.record,
-      ...(resource.sourceStep === undefined ? {} : { sourceStep: resource.sourceStep }),
-      role: resource.role,
-    })),
+    pendingInputs: [
+      ...planned.pendingMedia.map((resource) => ({
+        input: resource.port,
+        record: resource.record,
+        ...(resource.sourceStep === undefined ? {} : { sourceStep: resource.sourceStep }),
+        role: resource.role,
+      })),
+      ...planned.pendingText.map((resource) => ({
+        input: resource.port,
+        record: resource.record,
+        ...(resource.sourceStep === undefined ? {} : { sourceStep: resource.sourceStep }),
+      })),
+    ],
   };
 }
 

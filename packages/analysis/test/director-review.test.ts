@@ -11,6 +11,7 @@ import {
   resetDirectorDrafts,
   validateDirectorPackage,
   validateDirectorSceneAlignment,
+  validateDirectorScenesTierLabels,
 } from "../src/director-review.js";
 import { buildAdaptationScenes } from "../src/scenes-from-structure.js";
 import type { AnalysisSessionView, ViralInsightView } from "../src/shared.js";
@@ -93,4 +94,29 @@ test("approveDirectorReview rejects unchanged reference scenes", async () => {
   );
   const issues = await approveDirectorReview(root, { session: session(root), insight });
   assert.ok(issues.some((issue) => issue.includes("原口播")));
+});
+
+test("validateDirectorScenesTierLabels requires standard tier words for ranking replicas", () => {
+  const root = session("/tmp");
+  const rankingInsight: ViralInsightView = {
+    ...insight,
+    summary: "榜单测评",
+    replicationTips: ["先立等级标签"],
+  };
+  const baseScenes = buildAdaptationScenes(root, rankingInsight);
+  const issues = validateDirectorScenesTierLabels({
+    session: { ...root, adaptationGoal: "牛奶排行榜" },
+    insight: rankingInsight,
+    baseScenes,
+    directorScenes: [{ id: "scene-1", text: "第一款牛奶很好喝但没有等级词" }],
+  });
+  assert.ok(issues.some((issue) => issue.includes("五级标准词")));
+
+  const ok = validateDirectorScenesTierLabels({
+    session: { ...root, adaptationGoal: "牛奶排行榜" },
+    insight: rankingInsight,
+    baseScenes,
+    directorScenes: [{ id: "scene-1", text: "第一款给到夯，奶香浓郁" }],
+  });
+  assert.deepEqual(ok, []);
 });

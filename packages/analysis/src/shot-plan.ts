@@ -1,4 +1,5 @@
 import type { ScenePlan } from "./scene-plan.js";
+import { mergeSpokenSceneTexts } from "./spoken-text.js";
 
 export const SHOT_MAX_SECONDS = 15;
 export const H3_MIN_SECONDS = 4;
@@ -119,7 +120,7 @@ export function groupScenesIntoShots(
       : overlapping);
     for (const scene of scenesForShot) assignedSceneIds.add(scene.momentId);
 
-    const text = scenesForShot.map((scene) => scene.text.replace(/\s+/gu, "")).filter(Boolean).join("");
+    const text = mergeSpokenSceneTexts(scenesForShot.map((scene) => scene.text));
     const scenePromptHint = mergeScenePromptHints(scenesForShot.map((scene) => scene.prompt));
     baseShots.push({
       id: `shot_${index + 1}`,

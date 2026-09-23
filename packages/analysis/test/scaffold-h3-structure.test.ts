@@ -24,7 +24,7 @@ test("buildOfficialSpeakerSvml emits timeline shot structure for 21s replica", (
     voiceSampleText: replicaScenes[0]!.text,
     voiceCastingDirection: "clear presenter",
     voiceAssetRel: "../assets/voice-reference.wav",
-    productImageRef: "product-reference",
+    productImageRefs: ["product-reference"],
   });
 
   assert.match(official.generationBlock, /id="shot_1-take"/u);
@@ -32,12 +32,100 @@ test("buildOfficialSpeakerSvml emits timeline shot structure for 21s replica", (
   assert.match(official.generationBlock, /h3-kit\.h3-ugc-replica-v1/u);
   assert.match(official.generationBlock, /duration="15"/u);
   assert.match(official.generationBlock, /duration="6"/u);
-  assert.match(official.generationBlock, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
+  const shot2Block = official.generationBlock.split('id="shot_2-take"')[1] ?? "";
+  assert.match(shot2Block, /<h3:Reference image=\{product-reference\}\/>/u);
+  assert.match(shot2Block, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
   assert.match(official.generationBlock, /ExtractFrame id="shot_1-last"/u);
   assert.doesNotMatch(official.generationBlock, /scene_\d+-take/u);
   assert.doesNotMatch(official.generationBlock, /speaker-kit\.speaker-v1/u);
   assert.equal(official.h3ShotPlan.takeCount, 2);
   assert.equal(official.h3ShotPlan.truncated, false);
+});
+
+test("buildOfficialSpeakerSvml selects product refs from shot prompt instead of attaching all uploads", () => {
+  const official = buildOfficialSpeakerSvml({
+    scenes: replicaScenes.slice(0, 2),
+    referenceDuration: 6,
+    language: "zh",
+    capabilities: { fishSpeech: false, h3Video: true },
+    voiceSampleText: replicaScenes[0]!.text,
+    voiceCastingDirection: "clear presenter",
+    voiceAssetRel: "../assets/voice-reference.wav",
+    productImageRefs: ["product-reference", "product-reference-2"],
+  });
+
+  assert.match(official.generationBlock, /<h3:Reference image=\{product-reference\}\/>/u);
+  assert.doesNotMatch(official.generationBlock, /<h3:Reference image=\{product-reference-2\}\/>/u);
+});
+
+test("buildOfficialSpeakerSvml honors shotReferencePlan for multi-ref shots", () => {
+  const official = buildOfficialSpeakerSvml({
+    scenes: replicaScenes.slice(0, 2),
+    referenceDuration: 6,
+    language: "zh",
+    capabilities: { fishSpeech: false, h3Video: true },
+    voiceSampleText: replicaScenes[0]!.text,
+    voiceCastingDirection: "clear presenter",
+    voiceAssetRel: "../assets/voice-reference.wav",
+    productImageRefs: ["product-reference", "product-reference-2"],
+    shotReferencePlan: new Map([["shot_1", ["product-reference", "product-reference-2"]]]),
+  });
+
+  assert.match(official.generationBlock, /<h3:Reference image=\{product-reference\}\/>/u);
+  assert.match(official.generationBlock, /<h3:Reference image=\{product-reference-2\}\/>/u);
+});
+
+test("buildOfficialSpeakerSvml keeps a reference image when shotReferencePlan is empty for the opening shot", () => {
+  const official = buildOfficialSpeakerSvml({
+    scenes: replicaScenes.slice(0, 2),
+    referenceDuration: 6,
+    language: "zh",
+    capabilities: { fishSpeech: false, h3Video: true },
+    voiceSampleText: replicaScenes[0]!.text,
+    voiceCastingDirection: "clear presenter",
+    voiceAssetRel: "../assets/voice-reference.wav",
+    productImageRefs: ["product-reference", "product-reference-2"],
+    shotReferencePlan: new Map([["shot_1", []]]),
+  });
+
+  const shot1Block = official.generationBlock.split('id="shot_1-take"')[1]?.split('id="shot_2-take"')[0] ?? "";
+  assert.match(shot1Block, /<h3:Reference image=\{product-reference\}\/>/u);
+  assert.match(shot1Block, /<h3:Reference audio=\{presenter-voice\}\/>/u);
+});
+
+test("buildOfficialSpeakerSvml emits tier-list slot only when useTierListOverlay is enabled", () => {
+  const official = buildOfficialSpeakerSvml({
+    scenes: [
+      { id: "scene-1", momentId: "scene-1", start: 0, end: 15, text: "第一款标签写着夯到爆", prompt: "ranking hook" },
+    ],
+    referenceDuration: 15,
+    language: "zh",
+    capabilities: { fishSpeech: false, h3Video: true },
+    voiceSampleText: "第一款标签写着夯到爆",
+    voiceCastingDirection: "clear presenter",
+    voiceAssetRel: "../assets/voice-reference.wav",
+    productImageRefs: ["product-reference"],
+    useTierListOverlay: true,
+  });
+
+  assert.match(official.generationBlock, /id="tier-list-overlay"/u);
+  assert.match(official.generationBlock, /<text:Set name="tier-list" text=\{tier-list-overlay\}\/>/u);
+});
+
+test("buildOfficialSpeakerSvml omits tier-list slot by default", () => {
+  const official = buildOfficialSpeakerSvml({
+    scenes: replicaScenes.slice(0, 2),
+    referenceDuration: 6,
+    language: "zh",
+    capabilities: { fishSpeech: false, h3Video: true },
+    voiceSampleText: replicaScenes[0]!.text,
+    voiceCastingDirection: "clear presenter",
+    voiceAssetRel: "../assets/voice-reference.wav",
+    productImageRefs: ["product-reference"],
+  });
+
+  assert.doesNotMatch(official.generationBlock, /tier-list-overlay/u);
+  assert.doesNotMatch(official.generationBlock, /name="tier-list"/u);
 });
 
 test("selectH3Shots truncates very long references at MAX_H3_TAKES", () => {

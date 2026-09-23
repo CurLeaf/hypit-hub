@@ -25,7 +25,7 @@ These Kits target **reference-to-video (r2va)**: a required `text` prompt plus `
 
 | Import suffix / template | r2va inputs | Text slots |
 | --- | --- | --- |
-| `ugc-replica` / [`h3-ugc-replica-v1`](kits/h3-ugc-replica-v1.svs) | `reference_image`(s) + `reference_audio` | Required `dialogue`; optional `action` |
+| `ugc-replica` / [`h3-ugc-replica-v1`](kits/h3-ugc-replica-v1.svs) | `reference_image`(s) + `reference_audio` | Required `dialogue`; optional `action`, optional `tier-list` |
 | `speaker` / [`h3-speaker-v1`](kits/h3-speaker-v1.svs) | `reference_image` + `reference_audio` | Required `dialogue`; optional `action` |
 
 Official r2va prompt style (from MiniMax docs):
@@ -50,6 +50,8 @@ Character speaks: Follow the wind, live free. Leave worries behind, enjoy the mo
 | r2va mutually exclusive with `first_frame` / `last_frame` | Use `h3:FrameVideo` for i2v, not these Kits |
 
 Reference audio supplies **timbre only**. The prompt must carry the script to perform; the model generates fresh speech in that timbre rather than replaying the uploaded sample.
+
+`h3-ugc-replica-v1` also instructs H3 to **burn subtitles into the picture** (bottom-center, phrase-synced to the spoken script). The UGC replica scaffold does not add a `caption-fine` overlay track for H3 A-roll. When analysis detects ranking/tier-list content, the scaffold may also supply the optional `tier-list` slot with a left-side panel spec; other UI overlays remain prompt-driven rather than globally forced.
 
 ## Not covered here
 

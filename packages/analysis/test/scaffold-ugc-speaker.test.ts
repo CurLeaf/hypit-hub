@@ -5,7 +5,9 @@ import {
   buildH3ShotActionFallback,
   buildOfficialSpeakerSvml,
   measureH3ShotDuration,
+  refineShotsForH3Speech,
   resolveH3ShotAction,
+  selectH3Shots,
 } from "../src/scaffold-ugc-speaker.js";
 import type { ScenePlan } from "../src/scene-plan.js";
 
@@ -70,7 +72,7 @@ test("buildOfficialSpeakerSvml wires reference image and audio for each H3 take"
   assert.doesNotMatch(result.generationBlock, /h3-speaker-v1/u);
 });
 
-test("buildOfficialSpeakerSvml chains last-frame reference for follow-up shots", () => {
+test("buildOfficialSpeakerSvml chains product and last-frame references for follow-up shots", () => {
   const scenes = [
     scene(0, 15, "前半段"),
     scene(15, 20, "后半段"),
@@ -86,7 +88,9 @@ test("buildOfficialSpeakerSvml chains last-frame reference for follow-up shots",
     productImageRef: "product-reference",
   });
 
-  assert.match(result.generationBlock, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
+  const shot2Block = result.generationBlock.split('id="shot_2-take"')[1] ?? "";
+  assert.match(shot2Block, /<h3:Reference image=\{product-reference\}\/>/u);
+  assert.match(shot2Block, /<h3:Reference image=\{shot_1-last\.image\}\/>/u);
   assert.equal((result.generationBlock.match(/<h3:ReferenceVideo/gu) ?? []).length, 2);
   assert.match(result.semanticBlock, /whisperx:SemanticTake id="shot_1-semantic"/u);
   assert.match(result.semanticBlock, /whisperx:SemanticTake id="shot_2-semantic"/u);
@@ -120,4 +124,31 @@ test("buildH3ShotActionFallback is English-only", () => {
   assert.match(action, /lip-sync the supplied script/u);
   assert.match(action, /Open with strong hook energy/u);
   assert.doesNotMatch(action, /[\u4e00-\u9fff]/u);
+});
+
+test("refineShotsForH3Speech splits over-long dialogue into multiple H3 takes", () => {
+  const longText = "穿了三个月通勤周末都穿才敢分享的叠穿套装，大口袋工装夹克机能感直接拉满，军绿配色白内搭怎么搭都好看，内外层次已经配好不用自己凑，松紧收口廓形上身有余量省心又好搭，三百多的价格性价比直接拉满，但上身好看又有型兄弟们别犹豫，夹克单穿周末出街冲冲冲";
+  const timelineShots = [{
+    id: "shot_1",
+    index: 0,
+    start: 0,
+    end: 45,
+    durationSeconds: 45,
+    text: longText,
+    scenePromptHint: "Vertical product demo",
+    scenes: [scene(0, 45, longText)],
+  }];
+  const refined = refineShotsForH3Speech(timelineShots, "zh");
+  assert.ok(refined.length >= 2);
+  for (const shot of refined) {
+    assert.ok(shot.durationSeconds >= 4 && shot.durationSeconds <= 15);
+    assert.ok(shot.text.length > 0);
+  }
+});
+
+test("selectH3Shots aligns take durations with speech estimates for long targets", () => {
+  const longText = "穿了三个月通勤周末都穿才敢分享的叠穿套装，大口袋工装夹克机能感直接拉满，军绿配色白内搭怎么搭都好看，内外层次已经配好不用自己凑，松紧收口廓形上身有余量省心又好搭";
+  const { shots } = selectH3Shots([scene(0, 45, longText)], 45, "zh");
+  assert.ok(shots.length >= 2);
+  assert.ok(shots.every((shot) => shot.durationSeconds >= 4 && shot.durationSeconds <= 15));
 });

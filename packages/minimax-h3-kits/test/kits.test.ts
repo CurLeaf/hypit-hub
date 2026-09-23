@@ -27,5 +27,21 @@ test("MiniMax H3 Kits are finite data programs with distinct rendered semantics"
     const output = renderText(template, sealTextBindings(item.bindings));
     assert.match(output.value, new RegExp(item.marker, "u"), item.file);
     assert.doesNotMatch(output.value, /Seedance/u, item.file);
+    if (item.id === "h3-ugc-replica-v1") {
+      assert.doesNotMatch(output.value, /Tier list overlay:/u, item.file);
+      assert.doesNotMatch(output.value, /Add no logos, watermarks, UI chrome/u, item.file);
+    }
   }
+});
+
+test("h3-ugc-replica-v1 renders tier-list overlay only when the slot is supplied", () => {
+  const source = readFileSync(new URL("../kits/h3-ugc-replica-v1.svs", import.meta.url), "utf8");
+  const recipes = parseSvs("h3-ugc-replica-v1.svs", source.slice(source.indexOf("<sheet"))).recipes.map((recipe) => recipe.value);
+  const template = textTemplateFromSvsRecipes(recipes, "h3-ugc-replica-v1");
+  const output = renderText(template, sealTextBindings({
+    dialogue: "Review tier-one milk brands in sixty seconds.",
+    "tier-list": "Keep a fixed vertical ranking panel on the left side of the frame.",
+  }));
+  assert.match(output.value, /Tier list overlay:/u);
+  assert.match(output.value, /ranking panel on the left side/u);
 });

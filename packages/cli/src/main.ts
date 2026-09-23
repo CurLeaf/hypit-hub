@@ -23,7 +23,7 @@ import { isProjectResultCommand, runProjectResultCommand } from "./commands/resu
 import { isEnvironmentCommand, runEnvironmentCommand } from "./commands/environment.js";
 import { isExecutionCommand, runExecutionCommand } from "./commands/execution.js";
 import { inlineValuePreview } from "./runtime-view.js";
-import { resolvePackageRoot, resolveProjectRoot } from "@hypit/project-context-node";
+import { resolveCreativeProjectRoot, resolvePackageRoot, resolveProjectRoot } from "@hypit/project-context-node";
 import { loadDiscoveredSourcePackages } from "./source-packages.js";
 import {
   clearRuntimeProfile,
@@ -71,10 +71,20 @@ export async function runCli(
   let resolvedProject: Promise<string> | undefined;
   const commandProjectRoot = async (): Promise<string> => {
     const workspaceRoot = commandWorkspaceRoot(args);
-    resolvedProject ??= resolveProjectRoot({
-      ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
-      cwd: process.cwd(),
-    });
+    resolvedProject ??= (async () => {
+      if (distribution.packageRoot === undefined) {
+        return await resolveProjectRoot({
+          ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+          cwd: process.cwd(),
+        });
+      }
+      const resolved = await resolveCreativeProjectRoot({
+        ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+        cwd: process.cwd(),
+        distributionRoot: distribution.packageRoot,
+      });
+      return resolved.projectRoot;
+    })();
     return await resolvedProject;
   };
   const packageRootForProject = async (projectRoot?: string): Promise<string> =>

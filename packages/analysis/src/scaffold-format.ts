@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { generateUgcReplicaProject } from "./scaffold-ugc.js";
 import { ensureProductionLayout } from "./scaffold-paths.js";
 
+import { normalizeProductReferences } from "./product-reference.js";
 import type { SpeechMode } from "./speech-synth.js";
 import type { AdaptationView, AnalysisSessionView, BriefView, TreatmentView, ViralInsightView } from "./shared.js";
 
@@ -21,17 +22,18 @@ export async function generateFormatReplicaProject(input: {
   readonly formatId: string;
   readonly runtimePath?: string;
   readonly speechMode?: SpeechMode;
-  readonly productReferencePath?: string;
+  readonly productReferencePaths?: readonly string[];
   readonly videoAroll?: boolean;
   readonly brief?: BriefView;
   readonly goal?: string;
   readonly preparedAdaptation?: AdaptationView;
 }): Promise<{ readonly authorPath: string; readonly runPath: string }> {
   const formatId = input.formatId;
-  if (!SUPPORTED_FORMATS.has(formatId) && input.productReferencePath === undefined) {
+  const productReferencePaths = input.productReferencePaths ?? normalizeProductReferences(input.session).paths;
+  if (!SUPPORTED_FORMATS.has(formatId) && productReferencePaths.length === 0) {
     throw new Error("当前只生成竖屏 UGC 口播工程，请选择 UGC 或讲解格式");
   }
-  const hasProductReference = input.productReferencePath !== undefined;
+  const hasProductReference = productReferencePaths.length > 0;
   const speechMode: SpeechMode = hasProductReference ? "tts" : (input.speechMode ?? "reference");
   const effectiveFormatId = formatId === "explainer" || formatId === "talking-head" ? formatId : "ugc";
   const ugcTemplateDir = resolve(input.distributionRoot, UGC_TEMPLATE);
@@ -50,7 +52,7 @@ export async function generateFormatReplicaProject(input: {
     formatId: effectiveFormatId,
     ...(input.runtimePath === undefined ? {} : { runtimePath: input.runtimePath }),
     speechMode,
-    ...(input.productReferencePath === undefined ? {} : { productReferencePath: input.productReferencePath }),
+    ...(productReferencePaths.length === 0 ? {} : { productReferencePaths }),
     ...(input.videoAroll === undefined ? {} : { videoAroll: input.videoAroll }),
     ...(input.brief === undefined ? {} : { brief: input.brief }),
     ...(input.goal === undefined ? {} : { goal: input.goal }),
